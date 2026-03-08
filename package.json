@@ -1,0 +1,39 @@
+{
+  "name": "insforge-base",
+  "description": "Nuxt 4 + Vuetify 3 + InsForge base template",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run && playwright test",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "@insforge/sdk": "latest",
+    "jspdf": "^4.2.0",
+    "jspdf-autotable": "^5.0.7",
+    "nuxt": "^4.3.1",
+    "vue": "^3.5.28",
+    "vue-router": "^4.6.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "latest",
+    "@playwright/test": "^1.58.2",
+    "@vite-pwa/nuxt": "latest",
+    "@vue/test-utils": "latest",
+    "dotenv": "^17.3.1",
+    "happy-dom": "latest",
+    "vitest": "latest",
+    "vuetify-nuxt-module": "latest"
+  }
+}

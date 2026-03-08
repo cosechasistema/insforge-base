@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npm run generate",
+  "outputDirectory": ".output/public",
+  "rewrites": [
+    {
+      "source": "/((?!_nuxt|assets|favicon|.*\\..*).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
