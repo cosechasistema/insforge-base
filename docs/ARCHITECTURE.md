@@ -65,8 +65,15 @@
 #### `user_roles`
 | Columna | Tipo | Constraints | Descripcion |
 |---------|------|-------------|-------------|
-| user_id | VARCHAR(255) | PK | ID del usuario (InsForge Auth) |
-| role | VARCHAR(20) | NOT NULL, DEFAULT 'user', CHECK IN ('admin','user') | Rol del usuario |
+| id | UUID | PK, gen_random_uuid() | ID auto (creado por InsForge) |
+| user_id | UUID | NOT NULL | ID del usuario (InsForge Auth) |
+| role | TEXT | NOT NULL, DEFAULT 'user' | Rol: 'admin' o 'user' |
+| created_at | TIMESTAMPTZ | DEFAULT now() | Fecha de creacion |
+| updated_at | TIMESTAMPTZ | DEFAULT now() | Fecha de actualizacion |
+
+> **Nota**: Cuando creas tablas desde el dashboard de InsForge, automaticamente agrega
+> `id`, `created_at` y `updated_at`. El composable `useAuth` busca por `user_id`,
+> no por `id`.
 
 #### `items` (ejemplo)
 | Columna | Tipo | Constraints | Descripcion |
@@ -117,7 +124,8 @@ insforge-base/
 │   │       ├── index.vue
 │   │       └── [id].vue
 │   ├── plugins/
-│   │   └── insforge.ts
+│   │   ├── 01.insforge.ts
+│   │   └── 02.auth.ts
 │   └── types/
 │       └── index.ts
 ├── test/
@@ -199,17 +207,88 @@ Ruta                        Middleware       Accion si falla
 
 Para un proyecto nuevo basado en este template:
 
+### 6.1 Crear proyecto
+
 1. Crear proyecto en InsForge Dashboard
 2. Obtener URL base y Anon Key
-3. Crear tablas en la seccion Database:
-   - `user_roles` (ver schema en seccion 3.2)
-   - `items` (ver schema en seccion 3.2)
-4. Configurar `.env`:
-   ```
-   NUXT_PUBLIC_INSFORGE_URL=https://YOUR-PROJECT.us-east.insforge.app
-   NUXT_PUBLIC_INSFORGE_KEY=ik_YOUR_ANON_KEY
-   ```
-5. Configurar `.mcp.json` con el project ID correspondiente
+3. Linkear con CLI: `npx @insforge/cli link --project-id YOUR_PROJECT_ID`
+
+### 6.2 Crear tablas
+
+**IMPORTANTE**: Crear las tablas desde el **dashboard de InsForge**, NO con raw SQL.
+Las tablas creadas via `run-raw-sql` no se exponen automaticamente en la REST API
+(PostgREST no las detecta hasta un schema cache reload).
+
+Tablas requeridas:
+- `user_roles` (ver schema en seccion 3.2)
+- `items` (ver schema en seccion 3.2)
+
+### 6.3 Configurar RLS (Row Level Security)
+
+Despues de crear las tablas, configurar policies RLS. Sin policies, las tablas
+no retornan datos a usuarios autenticados aunque tengan GRANTs.
+
+```sql
+-- Para cada tabla nueva:
+CREATE POLICY tabla_all ON tabla FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY tabla_read_anon ON tabla FOR SELECT TO anon USING (true);
+```
+
+Si necesitas restriccion por usuario:
+```sql
+-- Solo el dueño puede ver/editar sus registros
+CREATE POLICY tabla_own ON tabla FOR ALL TO authenticated
+  USING (user_id = current_setting('request.jwt.claims')::json->>'sub')
+  WITH CHECK (user_id = current_setting('request.jwt.claims')::json->>'sub');
+```
+
+### 6.4 Configurar variables de entorno
+
+```
+NUXT_PUBLIC_INSFORGE_URL=https://YOUR-PROJECT.us-east.insforge.app
+NUXT_PUBLIC_INSFORGE_KEY=your-anon-key-here
+```
+
+### 6.5 Configurar MCP
+
+Actualizar `.mcp.json` con la API key del proyecto:
+```json
+{
+  "mcpServers": {
+    "insforge": {
+      "command": "npx",
+      "args": ["-y", "@insforge/mcp@latest"],
+      "env": {
+        "API_KEY": "ik_YOUR_API_KEY",
+        "API_BASE_URL": "https://YOUR-PROJECT.us-east.insforge.app"
+      }
+    }
+  }
+}
+```
+
+### 6.6 Crear usuarios de test
+
+```bash
+# Desactivar verificacion de email (para testing)
+curl -X PUT 'https://YOUR-PROJECT.us-east.insforge.app/api/auth/config' \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"requireEmailVerification": false}'
+
+# Crear admin
+curl -X POST 'https://YOUR-PROJECT.us-east.insforge.app/api/auth/users' \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin-test@yourapp.com","password":"TestAdmin1234","name":"Admin Test"}'
+
+# Asignar rol admin (via REST API)
+curl -X POST 'https://YOUR-PROJECT.us-east.insforge.app/api/database/records/user_roles' \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '[{"user_id": "USER_ID_FROM_RESPONSE", "role": "admin"}]'
+```
+
+Actualizar `.env.test` con las credenciales.
 
 ## 7. Decisiones Tecnicas
 
@@ -249,4 +328,38 @@ Para un proyecto nuevo basado en este template:
 | Variable | Descripcion | Ejemplo |
 |----------|-------------|---------|
 | NUXT_PUBLIC_INSFORGE_URL | URL base de InsForge | https://xxx.us-east.insforge.app |
-| NUXT_PUBLIC_INSFORGE_KEY | Anon key de InsForge | ik_xxx... |
+| NUXT_PUBLIC_INSFORGE_KEY | Anon key de InsForge | eyJhbG... |
+
+## 11. Gotchas y Lecciones Aprendidas
+
+### InsForge: tablas via SQL vs dashboard
+Las tablas creadas con `run-raw-sql` **NO se exponen** en la REST API automaticamente.
+PostgREST cachea el schema agresivamente y `NOTIFY pgrst, 'reload schema'` no siempre
+funciona en InsForge. **Solucion**: crear tablas desde el dashboard de InsForge.
+
+### InsForge: RLS obligatorio
+Las tablas creadas desde el dashboard tienen RLS habilitado **sin policies**.
+Esto significa que `SELECT` retorna `[]` (vacio) para usuarios autenticados.
+**Solucion**: agregar policies despues de crear cada tabla (ver seccion 6.3).
+
+### InsForge: columnas auto-generadas
+InsForge agrega `id` (UUID), `created_at` y `updated_at` automaticamente a tablas
+creadas desde el dashboard. No intentes crear tablas con `user_id` como PK —
+siempre va a tener un `id` UUID auto.
+
+### InsForge: MCP apunta al proyecto del directorio actual
+El MCP server de InsForge usa la API key del `.mcp.json` del directorio donde
+se ejecuta Claude Code. Si trabajas en un proyecto diferente, asegurate de que
+`.mcp.json` apunte al proyecto correcto.
+
+### Deploy: limpiar antes de deployear
+SIEMPRE borrar `.output/` y `.nuxt/` antes de deployear. El deploy tool sube
+TODO el directorio — si hay un build viejo local, sube assets con hashes viejos.
+
+### E2E: search post-create
+Siempre usar busqueda despues de crear un registro en tests E2E para encontrarlo
+en la tabla. Evita flaky tests por paginacion del v-data-table.
+
+### Auth: password sin caracteres especiales en curl
+Los caracteres `!` en passwords causan problemas con curl y JSON parsing.
+Usar passwords alfanumericos para usuarios de test (ej: `TestAdmin1234`).
