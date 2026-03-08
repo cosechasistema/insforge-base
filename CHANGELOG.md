@@ -5,6 +5,14 @@ Todos los cambios notables del proyecto se documentan en este archivo.
 Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 y el proyecto sigue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Pagina de administracion de usuarios (`/admin/users`) con cambio de roles
+- Iconos PWA placeholder (192x192 y 512x512) en `public/`
+- README.md con instrucciones de quick start y estructura del proyecto
+- Archivo `.env.example` como referencia de configuracion
+
 ## [0.1.0] - 2026-03-08
 
 ### Added

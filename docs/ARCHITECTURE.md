@@ -120,6 +120,8 @@ insforge-base/
 │   │   ├── login.vue
 │   │   ├── register.vue
 │   │   ├── verify-email.vue
+│   │   ├── admin/
+│   │   │   └── users.vue
 │   │   └── items/
 │   │       ├── index.vue
 │   │       └── [id].vue
@@ -138,8 +140,12 @@ insforge-base/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   └── API-CONTRACTS.md
+├── public/
+│   ├── icon-192.png
+│   └── icon-512.png
 ├── nuxt.config.ts
 ├── CHANGELOG.md
+├── README.md
 └── CLAUDE.md
 ```
 
@@ -199,6 +205,7 @@ Ruta                        Middleware       Accion si falla
 /                           auth            -> /login
 /items                      auth            -> /login
 /items/[id]                 auth            -> /login
+/admin/users                auth, admin     -> / (si no es admin)
 ```
 
 > Agregar nuevas rutas a esta tabla al crear modulos.
