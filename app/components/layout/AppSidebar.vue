@@ -20,7 +20,7 @@ const menuItems = computed(() => {
 </script>
 
 <template>
-  <v-navigation-drawer v-model="drawer" :width="240">
+  <v-navigation-drawer v-model="drawer" :width="240" data-testid="sidebar">
     <div class="pa-4 text-center">
       <v-icon :icon="APP_CONFIG.icon" size="48" color="secondary" />
       <h3 class="text-h6 mt-2">

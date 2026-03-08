@@ -33,7 +33,7 @@ async function handleLogin() {
   <v-container class="fill-height" fluid>
     <v-row align="center" justify="center">
       <v-col cols="12" sm="8" md="4">
-        <v-card class="pa-6" elevation="4">
+        <v-card class="pa-6" elevation="4" data-testid="login-card">
           <v-card-title class="text-h5 text-center mb-4">
             Sign In
           </v-card-title>
@@ -44,6 +44,7 @@ async function handleLogin() {
             variant="tonal"
             closable
             class="mb-4"
+            data-testid="login-error"
             @click:close="errorMsg = ''"
           >
             {{ errorMsg }}
@@ -57,6 +58,8 @@ async function handleLogin() {
               prepend-inner-icon="mdi-email"
               :disabled="loading"
               class="mb-2"
+              autocomplete="email"
+              data-testid="login-email"
             />
 
             <v-text-field
@@ -67,6 +70,8 @@ async function handleLogin() {
               :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
               :disabled="loading"
               class="mb-4"
+              autocomplete="current-password"
+              data-testid="login-password"
               @click:append-inner="showPassword = !showPassword"
             />
 
@@ -77,6 +82,7 @@ async function handleLogin() {
               size="large"
               :loading="loading"
               class="text-uppercase font-weight-bold"
+              data-testid="login-submit"
             >
               Sign In
             </v-btn>

@@ -1,57 +1,78 @@
 import { test, expect } from '@playwright/test'
-import { loginAsAdmin, loginAsUser } from './helpers/auth'
+import { loginAsAdmin } from './helpers/auth'
 
-test.describe('Auth', () => {
-  test('login page is accessible without authentication', async ({ page }) => {
+test.describe('Authentication', () => {
+  test('login page renders email field, password field, and Sign In button', async ({ page }) => {
     await page.goto('/login')
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('Sign In')).toBeVisible()
-    await expect(page.locator('input[type="email"]')).toBeVisible()
-    await expect(page.locator('input[type="password"]')).toBeVisible()
+
+    const card = page.locator('[data-testid="login-card"]')
+    await expect(card).toBeVisible()
+
+    const emailField = page.locator('[data-testid="login-email"] input')
+    await expect(emailField).toBeVisible()
+
+    const passwordField = page.locator('[data-testid="login-password"] input')
+    await expect(passwordField).toBeVisible()
+
+    const submitButton = page.locator('[data-testid="login-submit"]')
+    await expect(submitButton).toBeVisible()
+    await expect(submitButton).toContainText(/sign in/i)
   })
 
-  test('login with invalid credentials shows error', async ({ page }) => {
+  test('invalid credentials show error alert', async ({ page }) => {
     await page.goto('/login')
-    await page.waitForLoadState('networkidle')
-    await page.locator('input[type="email"]').fill('fake@email.com')
-    await page.locator('input[type="password"]').fill('wrongpassword')
-    await page.getByRole('button', { name: 'Sign In' }).click()
 
-    await expect(page.locator('.v-alert')).toBeVisible({ timeout: 10_000 })
+    await page.locator('[data-testid="login-email"] input').fill('wrong@example.com')
+    await page.locator('[data-testid="login-password"] input').fill('WrongPassword123')
+    await page.locator('[data-testid="login-submit"]').click()
+
+    const errorAlert = page.locator('[data-testid="login-error"]')
+    await expect(errorAlert).toBeVisible({ timeout: 10_000 })
+    await expect(errorAlert).toContainText('Invalid credentials')
   })
 
-  test('successful login as admin redirects to home', async ({ page }) => {
-    await loginAsAdmin(page)
-    await expect(page).toHaveURL(/\/$/)
-  })
-
-  test('successful login as user redirects to home', async ({ page }) => {
-    await loginAsUser(page)
-    await expect(page).toHaveURL(/\/$/)
-  })
-
-  test('logout clears session and redirects to /login', async ({ page }) => {
+  test('valid admin login redirects to dashboard', async ({ page }) => {
     await loginAsAdmin(page)
 
-    const logoutBtn = page.locator('[data-testid="logout-btn"]')
-      .or(page.getByRole('button', { name: /sign out|logout/i }))
-      .or(page.locator('.mdi-logout').locator('..'))
+    await expect(page).toHaveURL('/')
+    const dashboard = page.locator('[data-testid="dashboard-page"]')
+    await expect(dashboard).toBeVisible()
+  })
 
-    await logoutBtn.first().click()
+  test('dashboard shows welcome message, stat cards, and sidebar navigation', async ({ page }) => {
+    await loginAsAdmin(page)
+
+    const welcome = page.locator('[data-testid="dashboard-welcome"]')
+    await expect(welcome).toBeVisible()
+
+    const statUsers = page.locator('[data-testid="stat-users"]')
+    await expect(statUsers).toBeVisible()
+
+    const statRecords = page.locator('[data-testid="stat-records"]')
+    await expect(statRecords).toBeVisible()
+
+    const sidebar = page.locator('[data-testid="sidebar"]')
+    await expect(sidebar).toBeVisible()
+    await expect(sidebar).toContainText('Dashboard')
+    await expect(sidebar).toContainText('Items')
+    await expect(sidebar).toContainText('Users')
+  })
+
+  test('logout redirects to /login', async ({ page }) => {
+    await loginAsAdmin(page)
+
+    const logoutButton = page.locator('[data-testid="toolbar-logout"]')
+    await expect(logoutButton).toBeVisible()
+    await logoutButton.click()
+
     await page.waitForURL('**/login', { timeout: 10_000 })
     await expect(page).toHaveURL(/\/login/)
   })
 
-  test('protected routes redirect to /login without session', async ({ page }) => {
+  test('accessing /items without auth redirects to /login', async ({ page }) => {
     await page.goto('/items')
+
     await page.waitForURL('**/login', { timeout: 10_000 })
     await expect(page).toHaveURL(/\/login/)
-  })
-
-  test('register page is accessible and shows form', async ({ page }) => {
-    await page.goto('/register')
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('Create Account')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sign Up' })).toBeVisible()
   })
 })

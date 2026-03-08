@@ -37,6 +37,7 @@ function formatFecha(fecha: string) {
     item-value="id"
     hover
     class="elevation-1 rounded-lg"
+    data-testid="items-table"
   >
     <template #item.descripcion="{ item }">
       {{ item.descripcion || '-' }}
@@ -52,6 +53,8 @@ function formatFecha(fecha: string) {
         size="small"
         variant="text"
         color="info"
+        aria-label="Ver detalle"
+        data-testid="item-view"
         @click="emit('ver', item.id)"
       >
         <v-icon icon="mdi-eye" />
@@ -65,6 +68,8 @@ function formatFecha(fecha: string) {
         size="small"
         variant="text"
         color="error"
+        aria-label="Eliminar"
+        data-testid="item-delete"
         @click="emit('eliminar', item.id)"
       >
         <v-icon icon="mdi-delete" />

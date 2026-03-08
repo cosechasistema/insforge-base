@@ -78,7 +78,7 @@ onMounted(cargarDatos)
 
     <template v-else-if="isNew || item">
       <div class="d-flex align-center justify-space-between mb-4">
-        <h1 class="text-h4">
+        <h1 class="text-h4" data-testid="item-detail-title">
           {{ isNew ? 'Nuevo Item' : item!.nombre }}
         </h1>
         <v-btn
@@ -86,6 +86,7 @@ onMounted(cargarDatos)
           color="error"
           variant="tonal"
           prepend-icon="mdi-delete"
+          data-testid="item-detail-delete"
           @click="showDeleteDialog = true"
         >
           Eliminar
@@ -124,7 +125,7 @@ onMounted(cargarDatos)
     <v-snackbar
       v-model="snackbar.show"
       :color="snackbar.color"
-      :timeout="3000"
+      :timeout="5000"
     >
       {{ snackbar.text }}
     </v-snackbar>

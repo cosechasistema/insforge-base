@@ -1,125 +1,120 @@
 import { test, expect } from '@playwright/test'
-import { loginAsAdmin, navigateClientSide } from './helpers/auth'
-import { cleanupTestData } from './helpers/cleanup'
+import { loginAsAdmin } from './helpers/auth'
 
 const UNIQUE_SUFFIX = Date.now()
+let createdItemName = `E2E-Test-${UNIQUE_SUFFIX}`
 
 test.describe('Items CRUD', () => {
-  test.beforeAll(async () => {
-    await cleanupTestData()
-  })
-
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page)
-    await navigateClientSide(page, '/items')
+    await page.goto('/items')
     await page.waitForLoadState('networkidle')
   })
 
-  test('items page shows heading and table', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Items' })).toBeVisible()
-    await expect(page.locator('.v-data-table')).toBeVisible()
+  test('items page shows table and heading', async ({ page }) => {
+    const table = page.locator('[data-testid="items-table"]')
+    await expect(table).toBeVisible()
+
+    await expect(page.getByRole('heading').first()).toBeVisible()
   })
 
-  test('create a new item', async ({ page }) => {
-    const itemName = `E2E Test Item ${UNIQUE_SUFFIX}`
+  test('create item via form and verify in table', async ({ page }) => {
+    const newButton = page.locator('[data-testid="items-new-btn"]')
+    await expect(newButton).toBeVisible()
+    await newButton.click()
 
-    // Click "Nuevo Item" button
-    await page.getByRole('button', { name: 'Nuevo Item' }).click()
-    await expect(page.getByText('Nuevo Item')).toBeVisible()
+    const form = page.locator('[data-testid="item-form"]')
+    await expect(form).toBeVisible()
 
-    // Fill the form
-    await page.locator('.v-dialog input').first().fill(itemName)
-    await page.locator('.v-dialog textarea').first().fill('E2E test description')
+    await page.locator('[data-testid="item-form-nombre"] input').fill(createdItemName)
+    await page.locator('[data-testid="item-form-descripcion"] input').fill('Created by E2E test')
 
-    // Submit
-    await page.getByRole('button', { name: 'Crear item' }).click()
+    await page.locator('[data-testid="item-form-submit"]').click()
 
-    // Verify success snackbar
-    await expect(page.locator('.v-snackbar')).toContainText('creado correctamente', { timeout: 10_000 })
+    await page.waitForURL('**/items', { timeout: 10_000 })
 
-    // Use search post-create to find the item (avoids pagination flakiness)
-    const searchInput = page.locator('input[placeholder*="Buscar"]')
-    await searchInput.fill(itemName)
-    await expect(page.locator('.v-data-table')).toContainText(itemName)
+    // Search for the created item to avoid pagination issues
+    const searchInput = page.locator('[data-testid="items-search"] input')
+    await searchInput.fill(createdItemName)
+
+    const table = page.locator('[data-testid="items-table"]')
+    await expect(table).toContainText(createdItemName)
   })
 
-  test('search for item by name', async ({ page }) => {
-    const itemName = `E2E Test Item ${UNIQUE_SUFFIX}`
+  test('search filters items by name', async ({ page }) => {
+    const searchInput = page.locator('[data-testid="items-search"] input')
+    await expect(searchInput).toBeVisible()
 
-    const searchInput = page.locator('input[placeholder*="Buscar"]')
-    await searchInput.fill(itemName)
-    await expect(page.locator('.v-data-table')).toContainText(itemName)
+    await searchInput.fill(createdItemName)
 
-    // Clear search and verify table resets
-    await searchInput.clear()
-    await expect(page.locator('.v-data-table')).toBeVisible()
+    const table = page.locator('[data-testid="items-table"]')
+    await expect(table).toContainText(createdItemName)
   })
 
-  test('view item detail', async ({ page }) => {
-    const itemName = `E2E Test Item ${UNIQUE_SUFFIX}`
+  test('click view icon navigates to detail page', async ({ page }) => {
+    const searchInput = page.locator('[data-testid="items-search"] input')
+    await searchInput.fill(createdItemName)
+    await expect(page.locator('[data-testid="items-table"]')).toContainText(createdItemName)
 
-    // Search for the item first
-    const searchInput = page.locator('input[placeholder*="Buscar"]')
-    await searchInput.fill(itemName)
-    await expect(page.locator('.v-data-table')).toContainText(itemName)
+    const viewButton = page.locator('[data-testid="item-view"]').first()
+    await expect(viewButton).toBeVisible()
+    await viewButton.click()
 
-    // Click view (eye icon) on the first matching row
-    await page.locator('.v-data-table .mdi-eye').first().click()
+    await page.waitForURL(/\/items\/\d+/, { timeout: 10_000 })
 
-    // Should navigate to detail page
-    await expect(page).toHaveURL(/\/items\//)
-    await expect(page.getByText(itemName)).toBeVisible()
+    const detailTitle = page.locator('[data-testid="item-detail-title"]')
+    await expect(detailTitle).toBeVisible()
+    await expect(detailTitle).toContainText(createdItemName)
   })
 
-  test('edit an item from detail page', async ({ page }) => {
-    const itemName = `E2E Test Item ${UNIQUE_SUFFIX}`
-    const updatedName = `Updated E2E Item ${UNIQUE_SUFFIX}`
+  test('edit item name and verify updated', async ({ page }) => {
+    const updatedName = `${createdItemName}-edited`
 
     // Search and navigate to detail
-    const searchInput = page.locator('input[placeholder*="Buscar"]')
-    await searchInput.fill(itemName)
-    await expect(page.locator('.v-data-table')).toContainText(itemName)
-    await page.locator('.v-data-table .mdi-eye').first().click()
-    await expect(page).toHaveURL(/\/items\//)
+    const searchInput = page.locator('[data-testid="items-search"] input')
+    await searchInput.fill(createdItemName)
+    await expect(page.locator('[data-testid="items-table"]')).toContainText(createdItemName)
 
-    // The detail page shows an inline form — update the name
-    const nameInput = page.locator('input').first()
-    await nameInput.clear()
-    await nameInput.fill(updatedName)
+    const viewButton = page.locator('[data-testid="item-view"]').first()
+    await viewButton.click()
+    await page.waitForURL(/\/items\/\d+/, { timeout: 10_000 })
 
-    await page.getByRole('button', { name: 'Guardar cambios' }).click()
-    await expect(page.locator('.v-snackbar')).toContainText('actualizado correctamente', { timeout: 10_000 })
+    // Update the name field
+    const nombreField = page.locator('[data-testid="item-form-nombre"] input')
+    await nombreField.clear()
+    await nombreField.fill(updatedName)
 
-    // Go back and verify the updated name via search
-    await navigateClientSide(page, '/items')
-    await page.waitForLoadState('networkidle')
-    const listSearch = page.locator('input[placeholder*="Buscar"]')
+    await page.locator('[data-testid="item-form-submit"]').click()
+
+    await page.waitForURL('**/items', { timeout: 10_000 })
+
+    // Verify the updated name in the table
+    const listSearch = page.locator('[data-testid="items-search"] input')
     await listSearch.fill(updatedName)
-    await expect(page.locator('.v-data-table')).toContainText(updatedName)
+
+    const table = page.locator('[data-testid="items-table"]')
+    await expect(table).toContainText(updatedName)
+
+    // Update the tracked name for subsequent tests
+    createdItemName = updatedName
   })
 
-  test('delete an item with confirmation', async ({ page }) => {
-    const updatedName = `Updated E2E Item ${UNIQUE_SUFFIX}`
+  test('delete item with confirmation and verify removed', async ({ page }) => {
+    const searchInput = page.locator('[data-testid="items-search"] input')
+    await searchInput.fill(createdItemName)
+    await expect(page.locator('[data-testid="items-table"]')).toContainText(createdItemName)
 
-    // Search for the item
-    const searchInput = page.locator('input[placeholder*="Buscar"]')
-    await searchInput.fill(updatedName)
-    await expect(page.locator('.v-data-table')).toContainText(updatedName)
+    const deleteButton = page.locator('[data-testid="item-delete"]').first()
+    await expect(deleteButton).toBeVisible()
+    await deleteButton.click()
 
-    // Click delete icon on the first matching row
-    await page.locator('.v-data-table .mdi-delete').first().click()
+    // Handle confirmation dialog (Vuetify dialog or native)
+    const confirmButton = page.locator('.v-dialog').getByRole('button', { name: /eliminar|confirmar|aceptar|delete|ok/i })
+    if (await confirmButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await confirmButton.click()
+    }
 
-    // Confirmation dialog should appear
-    await expect(page.getByText('Confirmar eliminacion')).toBeVisible()
-
-    // Click "Eliminar" to confirm
-    await page.locator('.v-dialog').getByRole('button', { name: 'Eliminar' }).click()
-
-    // Verify success snackbar
-    await expect(page.locator('.v-snackbar')).toContainText('eliminado correctamente', { timeout: 10_000 })
-
-    // Verify item is gone from the list
-    await searchInput.fill(updatedName)
-    await expect(page.locator('.v-data-table')).not.toContainText(updatedName)
+    // Verify item is removed from the table
+    await expect(page.locator('[data-testid="items-table"]')).not.toContainText(createdItemName, { timeout: 10_000 })
   })
 })

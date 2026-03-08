@@ -97,12 +97,15 @@ function verDetalle(id: string) {
         density="compact"
         class="flex-grow-1"
         style="max-width: 500px;"
+        aria-label="Buscar items"
+        data-testid="items-search"
       />
       <div class="d-flex ga-2 flex-shrink-0">
         <v-btn
           color="info"
           variant="tonal"
           prepend-icon="mdi-chart-box-outline"
+          data-testid="items-report-btn"
           @click="showReporte = true"
         >
           Reporte
@@ -112,6 +115,7 @@ function verDetalle(id: string) {
           color="secondary"
           prepend-icon="mdi-plus"
           class="text-uppercase font-weight-bold"
+          data-testid="items-new-btn"
           @click="abrirCrear"
         >
           Nuevo Item
@@ -169,7 +173,7 @@ function verDetalle(id: string) {
     <v-snackbar
       v-model="snackbar.show"
       :color="snackbar.color"
-      :timeout="3000"
+      :timeout="5000"
     >
       {{ snackbar.text }}
     </v-snackbar>

@@ -81,7 +81,12 @@ onMounted(fetchUsers)
       item-value="id"
       class="elevation-1 rounded-lg"
       no-data-text="No hay usuarios con roles asignados"
+      data-testid="users-table"
     >
+      <template #item.user_id="{ item }">
+        <code class="text-caption" :title="item.user_id">{{ item.user_id.slice(0, 8) }}...</code>
+      </template>
+
       <template #item.role="{ item }">
         <v-chip
           :color="item.role === 'admin' ? 'primary' : 'default'"
@@ -100,6 +105,7 @@ onMounted(fetchUsers)
           size="small"
           variant="tonal"
           :color="item.role === 'admin' ? 'warning' : 'primary'"
+          data-testid="toggle-role"
           @click="toggleRole(item)"
         >
           {{ item.role === 'admin' ? 'Quitar admin' : 'Hacer admin' }}
@@ -110,7 +116,7 @@ onMounted(fetchUsers)
     <v-snackbar
       v-model="snackbar.show"
       :color="snackbar.color"
-      :timeout="3000"
+      :timeout="5000"
     >
       {{ snackbar.text }}
     </v-snackbar>
