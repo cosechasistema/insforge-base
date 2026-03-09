@@ -307,6 +307,7 @@ Actualizar `.env.test` con las credenciales.
 | user_roles tabla separada | InsForge Auth no tiene custom claims, extendemos con tabla |
 | PWA con cache offline | Mejora experiencia en conexiones inestables |
 | jsPDF + xlsx client-side | Generacion de reportes sin servidor adicional |
+| UI en espanol rioplatense | Proyecto orientado a usuarios argentinos, voseo en toda la UI (completá, ingresá, revisá). Sin i18n library — strings inline |
 
 ## 8. Testing Strategy
 
