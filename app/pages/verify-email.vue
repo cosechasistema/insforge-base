@@ -15,23 +15,23 @@ async function handleVerify() {
   errorMsg.value = ''
 
   if (!email.value || !otp.value) {
-    errorMsg.value = 'Please enter your email and verification code'
+    errorMsg.value = 'Por favor, ingresá tu email y código de verificación'
     return
   }
 
   if (otp.value.length !== 6) {
-    errorMsg.value = 'The code must be 6 digits'
+    errorMsg.value = 'El código debe tener 6 dígitos'
     return
   }
 
   const { error } = await verifyEmail(email.value, otp.value)
 
   if (error) {
-    errorMsg.value = 'Invalid or expired code. Please try again.'
+    errorMsg.value = 'Código inválido o expirado. Por favor, intentá de nuevo.'
     return
   }
 
-  successMsg.value = 'Email verified successfully!'
+  successMsg.value = '¡Email verificado exitosamente!'
   setTimeout(() => navigateTo('/login'), 1500)
 }
 </script>
@@ -42,11 +42,11 @@ async function handleVerify() {
       <v-col cols="12" sm="8" md="4">
         <v-card class="pa-6" elevation="4">
           <v-card-title class="text-h5 text-center mb-2">
-            Verify Email
+            Verificar Email
           </v-card-title>
 
           <v-card-subtitle class="text-center mb-4">
-            Enter the 6-digit code we sent to your email
+            Ingresá el código de 6 dígitos que enviamos a tu email
           </v-card-subtitle>
 
           <v-alert
@@ -72,7 +72,7 @@ async function handleVerify() {
           <v-form @submit.prevent="handleVerify">
             <v-text-field
               v-model="email"
-              label="Email"
+              label="Correo electrónico"
               type="email"
               prepend-inner-icon="mdi-email"
               :disabled="loading || !!route.query.email"
@@ -81,7 +81,7 @@ async function handleVerify() {
 
             <v-text-field
               v-model="otp"
-              label="Verification Code"
+              label="Código de verificación"
               placeholder="123456"
               prepend-inner-icon="mdi-shield-key"
               maxlength="6"
@@ -97,7 +97,7 @@ async function handleVerify() {
               :loading="loading"
               class="text-uppercase font-weight-bold"
             >
-              Verify
+              Verificar
             </v-btn>
           </v-form>
 
@@ -105,7 +105,7 @@ async function handleVerify() {
 
           <div class="text-center">
             <NuxtLink to="/login" class="text-decoration-none">
-              Back to Sign In
+              Volver a Iniciar Sesión
             </NuxtLink>
           </div>
         </v-card>

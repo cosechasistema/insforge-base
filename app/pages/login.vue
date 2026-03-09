@@ -14,14 +14,14 @@ async function handleLogin() {
   errorMsg.value = ''
 
   if (!email.value || !password.value) {
-    errorMsg.value = 'Please fill in all fields'
+    errorMsg.value = 'Por favor, completá todos los campos'
     return
   }
 
   const { error } = await signIn(email.value, password.value)
 
   if (error) {
-    errorMsg.value = 'Invalid credentials. Please check your email and password.'
+    errorMsg.value = 'Credenciales inválidas. Revisá tu email y contraseña.'
     return
   }
 
@@ -30,74 +30,95 @@ async function handleLogin() {
 </script>
 
 <template>
-  <v-container class="fill-height" fluid>
-    <v-row align="center" justify="center">
-      <v-col cols="12" sm="8" md="4">
-        <v-card class="pa-6" elevation="4" data-testid="login-card">
-          <v-card-title class="text-h5 text-center mb-4">
-            Sign In
-          </v-card-title>
+  <div class="auth-page">
+    <v-card
+      class="auth-card pa-8"
+      width="100%"
+      max-width="420"
+      elevation="12"
+      data-testid="login-card"
+    >
+      <div class="text-center mb-6">
+        <v-icon icon="mdi-shield-lock" size="48" color="primary" class="mb-3" />
+        <h1 class="text-h5 font-weight-bold">
+          Iniciar Sesión
+        </h1>
+        <p class="text-body-2 text-medium-emphasis mt-1">
+          Bienvenido de nuevo a InsForge
+        </p>
+      </div>
 
-          <v-alert
-            v-if="errorMsg"
-            type="error"
-            variant="tonal"
-            closable
-            class="mb-4"
-            data-testid="login-error"
-            @click:close="errorMsg = ''"
-          >
-            {{ errorMsg }}
-          </v-alert>
+      <v-alert
+        v-if="errorMsg"
+        type="error"
+        variant="tonal"
+        closable
+        class="mb-4"
+        data-testid="login-error"
+        @click:close="errorMsg = ''"
+      >
+        {{ errorMsg }}
+      </v-alert>
 
-          <v-form @submit.prevent="handleLogin">
-            <v-text-field
-              v-model="email"
-              label="Email"
-              type="email"
-              prepend-inner-icon="mdi-email"
-              :disabled="loading"
-              class="mb-2"
-              autocomplete="email"
-              data-testid="login-email"
-            />
+      <v-form @submit.prevent="handleLogin">
+        <v-text-field
+          v-model="email"
+          label="Correo electrónico"
+          type="email"
+          prepend-inner-icon="mdi-email-outline"
+          :disabled="loading"
+          class="mb-1"
+          autocomplete="email"
+          data-testid="login-email"
+        />
 
-            <v-text-field
-              v-model="password"
-              label="Password"
-              :type="showPassword ? 'text' : 'password'"
-              prepend-inner-icon="mdi-lock"
-              :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
-              :disabled="loading"
-              class="mb-4"
-              autocomplete="current-password"
-              data-testid="login-password"
-              @click:append-inner="showPassword = !showPassword"
-            />
+        <v-text-field
+          v-model="password"
+          label="Contraseña"
+          :type="showPassword ? 'text' : 'password'"
+          prepend-inner-icon="mdi-lock-outline"
+          :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+          :disabled="loading"
+          class="mb-2"
+          autocomplete="current-password"
+          data-testid="login-password"
+          @click:append-inner="showPassword = !showPassword"
+        />
 
-            <v-btn
-              type="submit"
-              color="secondary"
-              block
-              size="large"
-              :loading="loading"
-              class="text-uppercase font-weight-bold"
-              data-testid="login-submit"
-            >
-              Sign In
-            </v-btn>
-          </v-form>
+        <v-btn
+          type="submit"
+          color="primary"
+          block
+          size="large"
+          :loading="loading"
+          class="text-none font-weight-bold mb-4"
+          data-testid="login-submit"
+        >
+          Iniciar Sesión
+        </v-btn>
+      </v-form>
 
-          <v-divider class="my-4" />
-
-          <div class="text-center">
-            <span class="text-body-2">Don't have an account?</span>
-            <NuxtLink to="/register" class="text-decoration-none ml-1">
-              Sign Up
-            </NuxtLink>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+      <div class="text-center">
+        <span class="text-body-2 text-medium-emphasis">¿No tenés cuenta?</span>
+        <NuxtLink to="/register" class="text-decoration-none text-secondary font-weight-medium ml-1">
+          Registrate
+        </NuxtLink>
+      </div>
+    </v-card>
+  </div>
 </template>
+
+<style scoped>
+.auth-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #1565C0 0%, #0D47A1 50%, #26A69A 100%);
+}
+
+.auth-card {
+  border-radius: 16px !important;
+}
+</style>

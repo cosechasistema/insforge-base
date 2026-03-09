@@ -16,17 +16,17 @@ async function handleRegister() {
   errorMsg.value = ''
 
   if (!name.value || !email.value || !password.value || !confirmPassword.value) {
-    errorMsg.value = 'Please fill in all fields'
+    errorMsg.value = 'Por favor, completá todos los campos'
     return
   }
 
   if (password.value.length < 6) {
-    errorMsg.value = 'Password must be at least 6 characters'
+    errorMsg.value = 'La contraseña debe tener al menos 6 caracteres'
     return
   }
 
   if (password.value !== confirmPassword.value) {
-    errorMsg.value = 'Passwords do not match'
+    errorMsg.value = 'Las contraseñas no coinciden'
     return
   }
 
@@ -37,7 +37,7 @@ async function handleRegister() {
   )
 
   if (error) {
-    errorMsg.value = 'Registration failed. The email may already be in use.'
+    errorMsg.value = 'Error en el registro. Es posible que el email ya esté en uso.'
     return
   }
 
@@ -51,85 +51,105 @@ async function handleRegister() {
 </script>
 
 <template>
-  <v-container class="fill-height" fluid>
-    <v-row align="center" justify="center">
-      <v-col cols="12" sm="8" md="4">
-        <v-card class="pa-6" elevation="4">
-          <v-card-title class="text-h5 text-center mb-4">
-            Create Account
-          </v-card-title>
+  <div class="auth-page">
+    <v-card
+      class="auth-card pa-8"
+      width="100%"
+      max-width="420"
+      elevation="12"
+    >
+      <div class="text-center mb-6">
+        <v-icon icon="mdi-account-plus" size="48" color="primary" class="mb-3" />
+        <h1 class="text-h5 font-weight-bold">
+          Crear Cuenta
+        </h1>
+        <p class="text-body-2 text-medium-emphasis mt-1">
+          Unite a InsForge hoy
+        </p>
+      </div>
 
-          <v-alert
-            v-if="errorMsg"
-            type="error"
-            variant="tonal"
-            closable
-            class="mb-4"
-            @click:close="errorMsg = ''"
-          >
-            {{ errorMsg }}
-          </v-alert>
+      <v-alert
+        v-if="errorMsg"
+        type="error"
+        variant="tonal"
+        closable
+        class="mb-4"
+        @click:close="errorMsg = ''"
+      >
+        {{ errorMsg }}
+      </v-alert>
 
-          <v-form @submit.prevent="handleRegister">
-            <v-text-field
-              v-model="name"
-              label="Full Name"
-              prepend-inner-icon="mdi-account"
-              :disabled="loading"
-              class="mb-2"
-            />
+      <v-form @submit.prevent="handleRegister">
+        <v-text-field
+          v-model="name"
+          label="Nombre completo"
+          prepend-inner-icon="mdi-account-outline"
+          :disabled="loading"
+          class="mb-1"
+        />
 
-            <v-text-field
-              v-model="email"
-              label="Email"
-              type="email"
-              prepend-inner-icon="mdi-email"
-              :disabled="loading"
-              class="mb-2"
-            />
+        <v-text-field
+          v-model="email"
+          label="Correo electrónico"
+          type="email"
+          prepend-inner-icon="mdi-email-outline"
+          :disabled="loading"
+          class="mb-1"
+        />
 
-            <v-text-field
-              v-model="password"
-              label="Password"
-              :type="showPassword ? 'text' : 'password'"
-              prepend-inner-icon="mdi-lock"
-              :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
-              :disabled="loading"
-              class="mb-2"
-              @click:append-inner="showPassword = !showPassword"
-            />
+        <v-text-field
+          v-model="password"
+          label="Contraseña"
+          :type="showPassword ? 'text' : 'password'"
+          prepend-inner-icon="mdi-lock-outline"
+          :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+          :disabled="loading"
+          class="mb-1"
+          @click:append-inner="showPassword = !showPassword"
+        />
 
-            <v-text-field
-              v-model="confirmPassword"
-              label="Confirm Password"
-              :type="showPassword ? 'text' : 'password'"
-              prepend-inner-icon="mdi-lock-check"
-              :disabled="loading"
-              class="mb-4"
-            />
+        <v-text-field
+          v-model="confirmPassword"
+          label="Confirmar Contraseña"
+          :type="showPassword ? 'text' : 'password'"
+          prepend-inner-icon="mdi-lock-check-outline"
+          :disabled="loading"
+          class="mb-2"
+        />
 
-            <v-btn
-              type="submit"
-              color="secondary"
-              block
-              size="large"
-              :loading="loading"
-              class="text-uppercase font-weight-bold"
-            >
-              Sign Up
-            </v-btn>
-          </v-form>
+        <v-btn
+          type="submit"
+          color="primary"
+          block
+          size="large"
+          :loading="loading"
+          class="text-none font-weight-bold mb-4"
+        >
+          Registrarse
+        </v-btn>
+      </v-form>
 
-          <v-divider class="my-4" />
-
-          <div class="text-center">
-            <span class="text-body-2">Already have an account?</span>
-            <NuxtLink to="/login" class="text-decoration-none ml-1">
-              Sign In
-            </NuxtLink>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+      <div class="text-center">
+        <span class="text-body-2 text-medium-emphasis">¿Ya tenés cuenta?</span>
+        <NuxtLink to="/login" class="text-decoration-none text-secondary font-weight-medium ml-1">
+          Iniciá sesión
+        </NuxtLink>
+      </div>
+    </v-card>
+  </div>
 </template>
+
+<style scoped>
+.auth-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #1565C0 0%, #0D47A1 50%, #26A69A 100%);
+}
+
+.auth-card {
+  border-radius: 16px !important;
+}
+</style>

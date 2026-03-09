@@ -16,7 +16,7 @@ test.describe('Authentication', () => {
 
     const submitButton = page.locator('[data-testid="login-submit"]')
     await expect(submitButton).toBeVisible()
-    await expect(submitButton).toContainText(/sign in/i)
+    await expect(submitButton).toContainText(/iniciar sesión/i)
   })
 
   test('invalid credentials show error alert', async ({ page }) => {
@@ -28,7 +28,7 @@ test.describe('Authentication', () => {
 
     const errorAlert = page.locator('[data-testid="login-error"]')
     await expect(errorAlert).toBeVisible({ timeout: 10_000 })
-    await expect(errorAlert).toContainText('Invalid credentials')
+    await expect(errorAlert).toContainText('Credenciales inválidas')
   })
 
   test('valid admin login redirects to dashboard', async ({ page }) => {
