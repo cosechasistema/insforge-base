@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <v-main class="bg-background">
+    <v-main>
       <slot />
     </v-main>
   </v-app>
