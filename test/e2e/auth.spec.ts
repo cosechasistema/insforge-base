@@ -54,8 +54,8 @@ test.describe('Authentication', () => {
     const sidebar = page.locator('[data-testid="sidebar"]')
     await expect(sidebar).toBeVisible()
     await expect(sidebar).toContainText('Dashboard')
-    await expect(sidebar).toContainText('Items')
-    await expect(sidebar).toContainText('Users')
+    await expect(sidebar).toContainText('Transferencias')
+    await expect(sidebar).toContainText('Sync Logs')
   })
 
   test('logout redirects to /login', async ({ page }) => {
