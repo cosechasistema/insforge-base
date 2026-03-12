@@ -57,12 +57,12 @@ components/transferencias/        → TransferenciaList, TransferenciaDetalle, T
 | ---------------- | ------------ | ------------------------------------------ |
 | id               | UUID         | PK (auto, InsForge)                        |
 | bind_id          | VARCHAR(50)  | ID de transferencia en BIND (unique)       |
-| tipo             | VARCHAR(20)  | TRANSFER-CVU                               |
+| tipo             | VARCHAR(50)  | TRANSFER-CVU, TRANSFERENCIAS_RECIBIDAS     |
 | estado           | VARCHAR(20)  | COMPLETED, FAILED, IN_PROGRESS, etc.       |
 | monto            | DECIMAL      | Monto de la transferencia                  |
 | moneda           | VARCHAR(5)   | ARS                                        |
 | descripcion      | TEXT         | Descripcion/concepto                       |
-| concepto         | VARCHAR(10)  | Codigo concepto (VAR, etc.)                |
+| concepto         | VARCHAR(100) | Codigo concepto (VAR VARIOS, etc.)         |
 | origen_nombre    | VARCHAR(255) | Nombre del originante                      |
 | origen_cbu       | VARCHAR(30)  | CBU/CVU del originante                     |
 | origen_cuit      | VARCHAR(15)  | CUIT del originante                        |
@@ -95,7 +95,7 @@ components/transferencias/        → TransferenciaList, TransferenciaDetalle, T
 
 **Responsabilidad**: Obtener datos de BIND y guardarlos en InsForge.
 
-**Workflow principal**: `BIND Sync Transferencias`
+**Workflow principal**: `BIND Sync Transferencias -> InsForge` (ID: `WEBluR9Vf0BtaK5j`, 12 nodos)
 
 ```
 ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
@@ -113,12 +113,18 @@ components/transferencias/        → TransferenciaList, TransferenciaDetalle, T
 
 **Nodos del workflow**:
 
-1. **Trigger**: Cron (cada X horas) o Webhook (boton manual desde UI)
-2. **SSH Login JWT**: Ejecuta curl con mTLS para obtener token
-3. **SSH List Transfers**: Ejecuta curl con JWT para listar transferencias
-4. **Parse + Transform**: Mapea campos de BIND al schema de InsForge
-5. **Upsert InsForge**: Inserta o actualiza en `bind_transferencias` (key: `bind_id`)
-6. **Log Sync Result**: Registra en `bind_sync_log`
+1. **Cron Diario 10AM ARG**: Schedule Trigger a las 13:00 UTC (10:00 Argentina)
+2. **Webhook Sync Manual**: `POST /webhook/bind-sync-transferencias` (responde 200 inmediato)
+3. **Ejecutar Manual**: Para testing en n8n UI
+4. **Login JWT BIND**: SSH + curl con mTLS para obtener token
+5. **Parse Token**: Extrae JWT del response
+6. **Obtener Transacciones**: SSH + curl con JWT, transferencias del ultimo dia
+7. **Transform Records**: Mapea `counterparty`, `details` al schema PostgreSQL
+8. **Upsert Postgres**: `INSERT ... ON CONFLICT (bind_id) DO UPDATE` directo
+9. **Aggregate Results**: Cuenta registros, nuevos, errores
+10. **Write Sync Log**: Registra en `bind_sync_log`
+11. **Check Errors**: Solo pasa datos si `errores > 0` o `estado = ERROR`
+12. **Alerta Email**: Envia a `cosechasistema@gmail.com` via SMTP brevo
 
 ### 4. Servidor SSH (Puente mTLS)
 
@@ -152,3 +158,19 @@ components/transferencias/        → TransferenciaList, TransferenciaDetalle, T
 3. **n8n como unico escritor**: Las tablas `bind_*` son read-only desde Nuxt.
 4. **Datos sensibles en `datos_raw`**: Evaluar si guardar o sanitizar el JSON completo.
 5. **Logs de auditoria**: Cada sync queda registrado en `bind_sync_log`.
+
+## UI de monitoreo
+
+### Pagina `/sync-logs`
+
+- Card con ultima sincronizacion (fecha, estado, registros, errores)
+- Boton "Sincronizar ahora" (1 click por sesion, llama al webhook)
+- Tabla historial de sync logs con estado, conteos, duracion
+- Info de configuracion del cron
+
+### Pagina `/transferencias`
+
+- Cards resumen: total, completadas, fallidas/en progreso, monto total
+- Tabla con busqueda por nombre, CUIT, descripcion
+- Detalle individual con origen, fechas, JSON raw
+- Reporte exportable PDF/Excel
