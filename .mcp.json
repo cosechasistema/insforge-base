@@ -10,6 +10,20 @@
         "API_KEY": "ik_bb09bbf6cfae9bac9d7da00711379aba",
         "API_BASE_URL": "https://jr6hx35j.us-east.insforge.app"
       }
+    },
+    "n8n-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "n8n-mcp"
+      ],
+      "env": {
+        "MCP_MODE": "stdio",
+        "LOG_LEVEL": "error",
+        "DISABLE_CONSOLE_OUTPUT": "true",
+        "N8N_API_URL": "https://n8nmutual.easypanel-cosecha.lat",
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZTljNDBkNC00OWY1LTQ4NmEtYTFkMC05OWJjNDUxMWFkNzEiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiOTYyYjhjMjgtZTFhMS00ZGNhLTkxMGUtMmJkOWMwYWFmZjIyIiwiaWF0IjoxNzczMzIxMzAzLCJleHAiOjE3NzU4ODAwMDB9.Yb8nPHARFyR0gdWAJ44UCakEymV_mFo_Yzw28jX4Qvo"
+      }
     }
   }
 }
