@@ -271,6 +271,7 @@ onMounted(cargar)
               variant="text"
               color="info"
               aria-label="Ver detalle"
+              data-testid="conciliacion-detail-btn"
               @click="verDetalle(item)"
             >
               <v-icon icon="mdi-eye" />
