@@ -1,0 +1,798 @@
+{
+  "updatedAt": "2026-03-13T21:04:57.896Z",
+  "createdAt": "2026-03-12T14:27:24.657Z",
+  "id": "WEBluR9Vf0BtaK5j",
+  "name": "BIND Sync Transferencias → InsForge",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Ejecutar Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 13 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Cron Diario 10AM ARG",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bind-sync-transferencias",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Sync Manual",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        512
+      ],
+      "webhookId": "19b32ac6-7cc2-4d42-968a-7fd8f31e5e4f"
+    },
+    {
+      "parameters": {
+        "command": "cd /root && curl -X POST --url https://api.bind.com.ar/v1/login/jwt -H 'Content-Type: application/json' -d '{\"username\": \"api-mutual-prd\",\"password\": \"z5c$xB4MDAU36y32fza2qXdS4\"}' --cert ./30707818421_prd-202512.crt:univaca --key ./30707818421.key --silent --show-error"
+      },
+      "id": "ssh-login",
+      "name": "Login JWT BIND",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        304
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "p1bRsCCY8kDNmwBB",
+          "name": "SSH BIND produccion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst stdout = raw.stdout || '';\nconst stderr = raw.stderr || '';\nconst exitCode = raw.code;\n\nif (exitCode !== 0 || stderr) {\n  throw new Error(`Login failed: exit=${exitCode}, stderr=${stderr}`);\n}\n\ntry {\n  const response = JSON.parse(stdout);\n  if (!response.token) {\n    throw new Error(`No token in response: ${stdout}`);\n  }\n  return [{\n    json: {\n      token: response.token,\n      expires_in: response.expires_in || 3600,\n      timestamp: new Date().toISOString()\n    }\n  }];\n} catch (e) {\n  throw new Error(`Parse error: ${e.message}. Raw: ${stdout.substring(0, 200)}`);\n}"
+      },
+      "id": "parse-token",
+      "name": "Parse Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=cd /root && curl --location 'https://api.bind.com.ar/v1/banks/322/accounts/20-1-777228-1-5/owner/transactions' -H \"Authorization: JWT {{$json.token}}\" -H \"obp_from_date: {{new Date(Date.now() - 2*24*60*60*1000).toISOString().split('T')[0]}}\" -H \"obp_to_date: {{new Date().toISOString().split('T')[0]}}\" -H \"obp_limit: 100\" -H \"obp_categories: TRANSFERENCIAS_RECIBIDAS\" -H \"obp_sort_direction: DESC\" --cert './30707818421_prd-202512.crt:univaca' --key './30707818421.key' --silent --show-error"
+      },
+      "id": "ssh-transactions",
+      "name": "Obtener Transacciones",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        304
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "p1bRsCCY8kDNmwBB",
+          "name": "SSH BIND produccion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst stdout = raw.stdout || '';\nconst exitCode = raw.code;\n\nif (exitCode !== 0) {\n  throw new Error(`Transactions request failed: exit=${exitCode}, stderr=${raw.stderr}`);\n}\n\nlet apiResponse;\ntry {\n  apiResponse = JSON.parse(stdout);\n} catch (e) {\n  throw new Error(`JSON parse error: ${e.message}. Raw: ${stdout.substring(0, 300)}`);\n}\n\nconst transactions = Array.isArray(apiResponse) ? apiResponse : (apiResponse.transactions || apiResponse.data || []);\nif (!Array.isArray(transactions)) {\n  throw new Error(`Expected array, got: ${typeof transactions}`);\n}\n\nreturn transactions.map(t => {\n  const cp = t.counterparty || {};\n  const details = t.details || {};\n  const thisAccount = t.this_account || {};\n  const cpRouting = cp.account_routing || {};\n  return {\n    json: {\n      bind_id: t.id,\n      tipo: details.type || 'TRANSFERENCIAS_RECIBIDAS',\n      estado: details.completed ? 'COMPLETED' : 'IN_PROGRESS',\n      monto: Math.abs(parseFloat(details.value?.amount || 0)),\n      moneda: details.value?.currency || 'ARS',\n      descripcion: details.description || null,\n      concepto: details.motive || null,\n      origen_nombre: cp.name || null,\n      origen_cbu: cpRouting.address || null,\n      origen_cuit: cp.id || null,\n      destino_cuenta: thisAccount.id || null,\n      fecha_inicio: details.posted || null,\n      fecha_fin: details.completed || null,\n      fecha_negocio: details.posted ? details.posted.split('T')[0] : null,\n      datos_raw: JSON.stringify(t)\n    }\n  };\n});"
+      },
+      "id": "transform",
+      "name": "Transform Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO bind_transferencias (bind_id, tipo, estado, monto, moneda, descripcion, concepto, origen_nombre, origen_cbu, origen_cuit, destino_cuenta, fecha_inicio, fecha_fin, fecha_negocio, datos_raw)\nVALUES (\n  '{{ $json.bind_id }}',\n  '{{ $json.tipo }}',\n  '{{ $json.estado }}',\n  {{ $json.monto }},\n  '{{ $json.moneda }}',\n  {{ $json.descripcion ? \"'\" + $json.descripcion.replace(/'/g, \"''\") + \"'\" : \"NULL\" }},\n  {{ $json.concepto ? \"'\" + $json.concepto.replace(/'/g, \"''\") + \"'\" : \"NULL\" }},\n  {{ $json.origen_nombre ? \"'\" + $json.origen_nombre.replace(/'/g, \"''\") + \"'\" : \"NULL\" }},\n  {{ $json.origen_cbu ? \"'\" + $json.origen_cbu + \"'\" : \"NULL\" }},\n  {{ $json.origen_cuit ? \"'\" + $json.origen_cuit + \"'\" : \"NULL\" }},\n  {{ $json.destino_cuenta ? \"'\" + $json.destino_cuenta + \"'\" : \"NULL\" }},\n  {{ $json.fecha_inicio ? \"'\" + $json.fecha_inicio + \"'\" : \"NULL\" }},\n  {{ $json.fecha_fin ? \"'\" + $json.fecha_fin + \"'\" : \"NULL\" }},\n  {{ $json.fecha_negocio ? \"'\" + $json.fecha_negocio + \"'\" : \"NULL\" }},\n  '{{ $json.datos_raw }}'::jsonb\n)\nON CONFLICT (bind_id) DO UPDATE SET\n  estado = EXCLUDED.estado,\n  monto = EXCLUDED.monto,\n  descripcion = EXCLUDED.descripcion,\n  concepto = EXCLUDED.concepto,\n  origen_nombre = EXCLUDED.origen_nombre,\n  origen_cbu = EXCLUDED.origen_cbu,\n  origen_cuit = EXCLUDED.origen_cuit,\n  fecha_fin = EXCLUDED.fecha_fin,\n  datos_raw = EXCLUDED.datos_raw,\n  updated_at = now()",
+        "options": {}
+      },
+      "id": "pg-upsert",
+      "name": "Upsert Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        400,
+        304
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "13349aqWVZ2o9mbp",
+          "name": "Postgres BIND PRODUCCION"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn [{\n  json: {\n    tipo_sync: 'TRANSFERENCIAS',\n    estado: 'OK',\n    registros: items.length,\n    nuevos: items.length,\n    actualizados: 0,\n    errores: 0,\n    detalle_error: null,\n    fecha_desde: new Date(Date.now() - 1*24*60*60*1000).toISOString(),\n    fecha_hasta: new Date().toISOString(),\n    duracion_ms: 0\n  }\n}];"
+      },
+      "id": "aggregate",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO bind_sync_log (tipo_sync, estado, registros, nuevos, actualizados, errores, detalle_error, fecha_desde, fecha_hasta, duracion_ms)\nVALUES (\n  '{{ $json.tipo_sync }}',\n  '{{ $json.estado }}',\n  {{ $json.registros }},\n  {{ $json.nuevos }},\n  {{ $json.actualizados }},\n  {{ $json.errores }},\n  NULL,\n  '{{ $json.fecha_desde }}',\n  '{{ $json.fecha_hasta }}',\n  0\n)",
+        "options": {}
+      },
+      "id": "pg-log",
+      "name": "Write Sync Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        304
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "13349aqWVZ2o9mbp",
+          "name": "Postgres BIND PRODUCCION"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nif (data.errores > 0 || data.estado === 'ERROR') {\n  return [{ json: data }];\n}\nreturn [];"
+      },
+      "id": "check-errors",
+      "name": "Check Errors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "cosechasistema@gmail.com",
+        "toEmail": "cosechasistema@gmail.com",
+        "subject": "=⚠️ Error Sync BIND Transferencias - {{ $json.estado }}",
+        "options": {}
+      },
+      "id": "send-alert",
+      "name": "Alerta Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1360,
+        304
+      ],
+      "webhookId": "8662bc39-4307-41f6-b13f-dba3da3afced",
+      "credentials": {
+        "smtp": {
+          "id": "IVBrJw1KD1pBcebL",
+          "name": "SMTP brevo"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## BIND Sync Transferencias → InsForge\n\n**Fuente**: API BIND (api.bind.com.ar) via SSH + mTLS + JWT\n**Destino**: PostgreSQL `bind_transferencias`\n**Cron**: 10:00 AM Argentina (13:00 UTC)\n**Webhook**: POST /webhook/bind-sync-transferencias\n\n### Flujo de autenticacion\n1. SSH al servidor 143.244.181.216 (certificados mTLS en /root/)\n2. curl POST /login/jwt con cert+key → obtiene JWT token\n3. curl GET transferencias con JWT + filtros de fecha\n\n### Credentials\n- Postgres BIND PRODUCCION (id: 13349aqWVZ2o9mbp)\n- SSH Password (servidor 143.244.181.216:22)\n- SMTP brevo (id: IVBrJw1KD1pBcebL)\n\n### Datos\n- Upsert por `bind_id` (UNIQUE)\n- Guarda JSON raw completo en `datos_raw`\n- Log en `bind_sync_log` con tipo TRANSFERENCIAS\n- Alerta email si hay errores",
+        "height": 420,
+        "width": 520
+      },
+      "id": "sticky-info-bind",
+      "name": "INFO - BIND Sync",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        -208
+      ]
+    }
+  ],
+  "connections": {
+    "Ejecutar Manual": {
+      "main": [
+        [
+          {
+            "node": "Login JWT BIND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Diario 10AM ARG": {
+      "main": [
+        [
+          {
+            "node": "Login JWT BIND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Sync Manual": {
+      "main": [
+        [
+          {
+            "node": "Login JWT BIND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login JWT BIND": {
+      "main": [
+        [
+          {
+            "node": "Parse Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Token": {
+      "main": [
+        [
+          {
+            "node": "Obtener Transacciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Transacciones": {
+      "main": [
+        [
+          {
+            "node": "Transform Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Records": {
+      "main": [
+        [
+          {
+            "node": "Upsert Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Postgres": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Write Sync Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Sync Log": {
+      "main": [
+        [
+          {
+            "node": "Check Errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Errors": {
+      "main": [
+        [
+          {
+            "node": "Alerta Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Cron Diario 10AM ARG": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": {
+    "📊 Parse Token": [
+      {
+        "json": {
+          "token": "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJBbzFLUHhBZFdrZlVlUDlsUG9ONVJnPT0iLCJjcmVhdGVkIjoxNzczMzI3NzYzMTIzLCJuYW1lIjoiTVVUVUFMIENPU0VDSEEgU0FMVUQiLCJleHAiOjE3NzM0NDc3NjN9.aRsoj1vTE9ZIdSk0VX9E28Kw-REybO2qzMqvWiZzgjy-8fP6IAUeSr5Z6Wmhqf7e4Uulv6C2S4d2V_Wae6oQow",
+          "expires_in": 120000,
+          "timestamp": "2026-03-12T15:02:56.000Z"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ],
+    "💰 Obtener Transacciones": [
+      {
+        "json": {
+          "code": 0,
+          "signal": null,
+          "stdout": "[{\"id\":\"NSBT-1-900-777228-65-1-20260312-15-10-7988-1\",\"counterparty\":{\"id\":\"20177733785\",\"name\":\"BARALE DANIEL EDUARDO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000007900201777337856\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T23:31:23Z\",\"value\":{\"currency\":\"ARS\",\"amount\":457800.00},\"motive\":\"VAR\",\"reference_number\":\"JMQKYZ9QQZ6J0XVR9V50P3\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":45317886.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-900-777228-65-1-20260312-12-10-4459-1\",\"counterparty\":{\"id\":\"20405832330\",\"name\":\"DANNI ADRIANA ANTONELLA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100186189543476\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T23:02:03Z\",\"value\":{\"currency\":\"ARS\",\"amount\":145000.00},\"motive\":\"VAR\",\"reference_number\":\"Z0KV8794014J3JX4NPEYDX\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":44860086.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-178-30-7390-1\",\"counterparty\":{\"id\":\"20180066919\",\"name\":\"ARCE VICTOR OSVALDO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T12:35:13Z\",\"value\":{\"currency\":\"ARS\",\"amount\":296600.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":44715086.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-177-30-9031-1\",\"counterparty\":{\"id\":\"27127932951\",\"name\":\"DUARTE LIDIA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T12:13:52Z\",\"value\":{\"currency\":\"ARS\",\"amount\":533700.00},\"motive\":\"VAR TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":44418486.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-177-30-5507-1\",\"counterparty\":{\"id\":\"20107649345\",\"name\":\"GRAFF ALEJANDRO GASPAR\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T12:04:44Z\",\"value\":{\"currency\":\"ARS\",\"amount\":417000.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":43884786.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-33-777228-65-1-20260312-26-10-867-1\",\"counterparty\":{\"id\":\"27274108741\",\"name\":\"HENAIN SIRIA LORENA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000076500000021378922\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:58:04Z\",\"value\":{\"currency\":\"ARS\",\"amount\":3500.00},\"motive\":\"VAR\",\"reference_number\":\"RD06ZO9WVMY6KDJ5N5GP7X\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":43467786.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-176-30-9464-1\",\"counterparty\":{\"id\":\"20137436435\",\"name\":\"MAÑANES GERARDO LUIS\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:48:33Z\",\"value\":{\"currency\":\"ARS\",\"amount\":738400.00},\"motive\":\"FAC TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":43464286.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-54-777228-65-1-20260312-10-10-8190-1\",\"counterparty\":{\"id\":\"27389721900\",\"name\":\"HRYCIUK KARINA MARIANA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100163610117235\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:48:12Z\",\"value\":{\"currency\":\"ARS\",\"amount\":71050.00},\"motive\":\"VAR\",\"reference_number\":\"46YGOW9M165RJ6ZYNEXD8J\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":42725886.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-176-30-7908-1\",\"counterparty\":{\"id\":\"20122488102\",\"name\":\"ACOSTA LUIS ALBERTO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:44:11Z\",\"value\":{\"currency\":\"ARS\",\"amount\":368000.00},\"motive\":\"VAR VARVarios\",\"reference_number\":\"VARVarios\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":42654836.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-176-30-6658-1\",\"counterparty\":{\"id\":\"27313775165\",\"name\":\"VI#A SIMONCINI LORENA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:40:47Z\",\"value\":{\"currency\":\"ARS\",\"amount\":187000.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":42286836.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-53-777228-65-1-20260312-10-10-2203-1\",\"counterparty\":{\"id\":\"27356866857\",\"name\":\"DENCHAN PAOLA GABRIELA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100144038147475\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:35:34Z\",\"value\":{\"currency\":\"ARS\",\"amount\":131300.00},\"motive\":\"VAR\",\"reference_number\":\"0V1JXON1L1J5R837NZ64EL\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":42099836.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-176-30-3518-1\",\"counterparty\":{\"id\":\"20149559575\",\"name\":\"SCHLEICHER JUAN CARLOS\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:31:52Z\",\"value\":{\"currency\":\"ARS\",\"amount\":219500.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":41968536.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-52-777228-65-1-20260312-10-10-6046-1\",\"counterparty\":{\"id\":\"20332907922\",\"name\":\"SZKAMARDA MAURICIO ROLANDO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100149328335699\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:30:41Z\",\"value\":{\"currency\":\"ARS\",\"amount\":129700.00},\"motive\":\"VAR\",\"reference_number\":\"0V1JXON1L1J1QRJGNZ64EL\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":41749036.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-176-30-288-1\",\"counterparty\":{\"id\":\"30717389480\",\"name\":\"\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:22:44Z\",\"value\":{\"currency\":\"ARS\",\"amount\":817200.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":41619336.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-31-777228-65-1-20260312-26-10-1503-1\",\"counterparty\":{\"id\":\"27245768198\",\"name\":\"LAPASINI LORENA ELIZABETH\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000076500000019853790\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:19:47Z\",\"value\":{\"currency\":\"ARS\",\"amount\":223600.00},\"motive\":\"VAR\",\"reference_number\":\"8D0Q619L0686OPMXN7JZ5R\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":40802136.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-51-777228-65-1-20260312-10-10-650-1\",\"counterparty\":{\"id\":\"27200938300\",\"name\":\"VILLALVA NIDIA GRASIELA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100123581657381\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:18:27Z\",\"value\":{\"currency\":\"ARS\",\"amount\":221500.00},\"motive\":\"VAR\",\"reference_number\":\"WY7ZEPN6M171LQG42Q0M51\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":40578536.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-50-777228-65-1-20260312-10-10-8556-1\",\"counterparty\":{\"id\":\"27391780760\",\"name\":\"ANTUNOVICH MAIRA BELEN\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100197819693920\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:16:43Z\",\"value\":{\"currency\":\"ARS\",\"amount\":115300.00},\"motive\":\"VAR\",\"reference_number\":\"L18MKX9RXVYM43R49O6WYV\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":40357036.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-50-777228-65-1-20260312-10-10-2040-1\",\"counterparty\":{\"id\":\"23209301229\",\"name\":\"MAIDANA CARLOS HECTOR\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100196964084603\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:11:26Z\",\"value\":{\"currency\":\"ARS\",\"amount\":152000.00},\"motive\":\"VAR\",\"reference_number\":\"0V1JXON1L1JOO6LPNZ64EL\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":40241736.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-175-30-3641-1\",\"counterparty\":{\"id\":\"27277869069\",\"name\":\"SLIWINSKI GABRIELA NOEMI\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T11:02:45Z\",\"value\":{\"currency\":\"ARS\",\"amount\":117300.00},\"motive\":\"VAR TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":40089736.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-174-30-5673-1\",\"counterparty\":{\"id\":\"20079016463\",\"name\":\"PEGORARO OSCAR\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:35:46Z\",\"value\":{\"currency\":\"ARS\",\"amount\":530300.00},\"motive\":\"CUO TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":39972436.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-174-30-3081-1\",\"counterparty\":{\"id\":\"27268752442\",\"name\":\"PEGORARO LAURA ANALIA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:26:57Z\",\"value\":{\"currency\":\"ARS\",\"amount\":169700.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":39442136.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-174-30-2498-1\",\"counterparty\":{\"id\":\"27244890445\",\"name\":\"SPAHN ESTELA IRENE\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:24:58Z\",\"value\":{\"currency\":\"ARS\",\"amount\":229200.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":39272436.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-174-30-2143-1\",\"counterparty\":{\"id\":\"27325110614\",\"name\":\"RUSCH GABRIELA ALEJANDRA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:23:50Z\",\"value\":{\"currency\":\"ARS\",\"amount\":195700.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":39043236.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-174-30-1297-1\",\"counterparty\":{\"id\":\"20284436696\",\"name\":\"LIMITO FACUNDO ANDRES\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:20:51Z\",\"value\":{\"currency\":\"ARS\",\"amount\":305400.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":38847536.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-43-777228-65-1-20260312-10-10-3545-1\",\"counterparty\":{\"id\":\"27207742282\",\"name\":\"MARTINEZ CRISTALDI FABIANA EDI\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100110215911177\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:10:57Z\",\"value\":{\"currency\":\"ARS\",\"amount\":250000.00},\"motive\":\"VAR\",\"reference_number\":\"3D5W612E64GOV3DG2GXYVR\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":38542136.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-42-777228-65-1-20260312-10-10-9124-1\",\"counterparty\":{\"id\":\"27180960002\",\"name\":\"VARICHEVAL MIRTHA ESTER\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100105821829129\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:06:35Z\",\"value\":{\"currency\":\"ARS\",\"amount\":271300.00},\"motive\":\"VAR\",\"reference_number\":\"46YGOW9M16506J8MNEXD8J\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":38292136.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-42-777228-65-1-20260312-10-10-3279-1\",\"counterparty\":{\"id\":\"20247129708\",\"name\":\"ROLON LUIS ARIEL\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100195802566424\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T10:00:43Z\",\"value\":{\"currency\":\"ARS\",\"amount\":221500.00},\"motive\":\"VAR\",\"reference_number\":\"WY7ZEPN6M17JXOWQ2Q0M51\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":38020836.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-173-30-5523-1\",\"counterparty\":{\"id\":\"27165507008\",\"name\":\"BECERRO EDY LILIAN\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T09:59:18Z\",\"value\":{\"currency\":\"ARS\",\"amount\":487900.00},\"motive\":\"CUO TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":37799336.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-173-30-4014-1\",\"counterparty\":{\"id\":\"23182093009\",\"name\":\"PEREZ JUAN JAVIER\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T09:53:15Z\",\"value\":{\"currency\":\"ARS\",\"amount\":301800.00},\"motive\":\"CUO TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":37311436.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-172-30-8219-1\",\"counterparty\":{\"id\":\"20174970484\",\"name\":\"SANCHEZ JOSE LUIS\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T09:27:42Z\",\"value\":{\"currency\":\"ARS\",\"amount\":360800.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":37009636.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-172-30-7350-1\",\"counterparty\":{\"id\":\"23168979789\",\"name\":\"DI RADO HECTOR ARIEL\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T09:23:28Z\",\"value\":{\"currency\":\"ARS\",\"amount\":144200.00},\"motive\":\"VAR\",\"reference_number\":\"\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":36648836.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-172-30-5312-1\",\"counterparty\":{\"id\":\"20207219798\",\"name\":\"GOROSITO JAVIER IGNACIO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T09:13:04Z\",\"value\":{\"currency\":\"ARS\",\"amount\":307500.00},\"motive\":\"EXP TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":36504636.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-172-30-1623-1\",\"counterparty\":{\"id\":\"27180064147\",\"name\":\"SOLE NORMA ESTER\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T08:50:48Z\",\"value\":{\"currency\":\"ARS\",\"amount\":183859.00},\"motive\":\"FAC TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":36197136.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-171-30-7441-1\",\"counterparty\":{\"id\":\"20160888920\",\"name\":\"CARABAJAL ANGEL RENE\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T08:14:56Z\",\"value\":{\"currency\":\"ARS\",\"amount\":343300.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":36013277.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-25-777228-65-1-20260312-10-10-3834-1\",\"counterparty\":{\"id\":\"27377959200\",\"name\":\"SANCHEZ SORIA ANA LAURA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100194352990406\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T07:35:26Z\",\"value\":{\"currency\":\"ARS\",\"amount\":221132.00},\"motive\":\"VAR\",\"reference_number\":\"WGRXJE27DZOGZY7JN7MYQL\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":35669977.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260312-171-30-3133-1\",\"counterparty\":{\"id\":\"20226330527\",\"name\":\"TKACZUK ORLANDO JAVIER\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-12T00:00:00Z\",\"completed\":\"2026-03-12T06:46:03Z\",\"value\":{\"currency\":\"ARS\",\"amount\":425400.00},\"motive\":\"VAR TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":35448845.06}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-18-1-20260311-421-30-1-78\",\"counterparty\":{\"id\":\"20122488404\",\"name\":\"LEDREHOZ SALVADOR\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Acred. Terceros otros Bancos\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T22:01:09Z\",\"value\":{\"currency\":\"ARS\",\"amount\":77000.00},\"motive\":\"\",\"reference_number\":\"\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":33618017.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"CBU\",\"address\":\"3220001805007772280019\"}}},{\"id\":\"NSBT-1-1-777228-18-1-20260311-421-30-1-26\",\"counterparty\":{\"id\":\"20118002181\",\"name\":\"WITT HUGO OSCAR\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Acred. Terceros otros Bancos\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T22:01:09Z\",\"value\":{\"currency\":\"ARS\",\"amount\":474100.00},\"motive\":\"\",\"reference_number\":\"\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":33541017.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"CBU\",\"address\":\"3220001805007772280019\"}}},{\"id\":\"NSBT-1-36-777228-65-1-20260311-401-10-6214-1\",\"counterparty\":{\"id\":\"20247000381\",\"name\":\"CHRONIUK PABLO MARCELO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100104539459426\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T21:32:55Z\",\"value\":{\"currency\":\"ARS\",\"amount\":245600.00},\"motive\":\"VAR\",\"reference_number\":\"46YGOW9M16RRLYJZNEXD8J\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":33066917.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-575-30-1776-1\",\"counterparty\":{\"id\":\"20079262545\",\"name\":\"AQUILINO MATEO ANGEL\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T20:06:48Z\",\"value\":{\"currency\":\"ARS\",\"amount\":350200.00},\"motive\":\"VAR TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":32821317.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-574-30-9516-1\",\"counterparty\":{\"id\":\"27362952684\",\"name\":\"DUARTE MARIAN ALEJANDRA SOLEDA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T20:02:00Z\",\"value\":{\"currency\":\"ARS\",\"amount\":71050.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":32471117.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-574-30-9091-1\",\"counterparty\":{\"id\":\"27362952684\",\"name\":\"DUARTE MARIAN ALEJANDRA SOLEDA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T20:01:09Z\",\"value\":{\"currency\":\"ARS\",\"amount\":71050.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":32400067.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-574-30-8531-1\",\"counterparty\":{\"id\":\"27362952684\",\"name\":\"DUARTE MARIAN ALEJANDRA SOLEDA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T19:59:58Z\",\"value\":{\"currency\":\"ARS\",\"amount\":71050.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":32329017.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-574-30-6227-1\",\"counterparty\":{\"id\":\"30707124101\",\"name\":\"DISTRIBUIDORA PRINGLES S.R.L.\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T19:55:10Z\",\"value\":{\"currency\":\"ARS\",\"amount\":1796800.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":32257967.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-58-777228-65-1-20260311-400-10-2516-1\",\"counterparty\":{\"id\":\"20369783948\",\"name\":\"MANDOLIN MILTON FEDERICO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100014200627202\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T19:50:19Z\",\"value\":{\"currency\":\"ARS\",\"amount\":387300.00},\"motive\":\"VAR\",\"reference_number\":\"Z6OLMDN3V14ZZX4X2E7RQ5\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":30461167.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-57-777228-65-1-20260311-400-10-6424-1\",\"counterparty\":{\"id\":\"20398170483\",\"name\":\"RODRIGUEZ MICAEL NICOLAS\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100109015317427\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T19:47:38Z\",\"value\":{\"currency\":\"ARS\",\"amount\":300000.00},\"motive\":\"VAR\",\"reference_number\":\"XJ8G7V95D140DK0W9EMPYR\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":30073867.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-573-30-2873-1\",\"counterparty\":{\"id\":\"27164423846\",\"name\":\"VIRGONA NORMA BEATRIZ\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T19:26:54Z\",\"value\":{\"currency\":\"ARS\",\"amount\":290300.00},\"motive\":\"VAR VARIOS\",\"reference_number\":\"VARIOS\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":29773867.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-572-30-1742-1\",\"counterparty\":{\"id\":\"27131093972\",\"name\":\"FERRER MARISEL TERESITA\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T19:00:52Z\",\"value\":{\"currency\":\"ARS\",\"amount\":119000.00},\"motive\":\"VAR 0013109397\",\"reference_number\":\"0013109397\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":29483567.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-34-777228-65-1-20260311-400-10-3545-1\",\"counterparty\":{\"id\":\"27185010533\",\"name\":\"MARTINEZ MARY MABEL\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"CVU\",\"address\":\"0000003100032147398445\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Transferencia Credito\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T18:18:47Z\",\"value\":{\"currency\":\"ARS\",\"amount\":1688000.00},\"motive\":\"VAR\",\"reference_number\":\"PDX4OGNYG76JWG0QN0L6EY\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":29364567.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}},{\"id\":\"NSBT-1-1-777228-66-1-20260311-570-30-3905-1\",\"counterparty\":{\"id\":\"20083068729\",\"name\":\"SPAHN AGUSTIN MARIO\",\"id_type\":\"CUIT_CUIL\",\"bank_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}},\"details\":{\"type\":\"TRANSFERENCIAS_RECIBIDAS\",\"description\":\"Crédito Transf. entre Cuentas\",\"posted\":\"2026-03-11T00:00:00Z\",\"completed\":\"2026-03-11T18:15:25Z\",\"value\":{\"currency\":\"ARS\",\"amount\":1115100.00},\"motive\":\"VAR TRANSF\",\"reference_number\":\"TRANSF\",\"new_balance\":{\"currency\":\"ARS\",\"amount\":27676567.33}},\"metadata\":{\"tags\":[]},\"this_account\":{\"id\":\"20-1-777228-1-5\",\"kind\":\"20\",\"bank_routing\":{\"scheme\":\"NAME\",\"address\":\"BANCO INDUSTRIAL S.A.\",\"code\":\"322\"},\"account_routing\":{\"scheme\":\"UNAVAILABLE\",\"address\":\"\"}}}]",
+          "stderr": ""
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ],
+    "Parse Token": [
+      {
+        "json": {
+          "token": "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJBbzFLUHhBZFdrZlVlUDlsUG9ONVJnPT0iLCJjcmVhdGVkIjoxNzczMzMxMzk5NTI1LCJuYW1lIjoiTVVUVUFMIENPU0VDSEEgU0FMVUQiLCJleHAiOjE3NzM0NTEzOTl9.sdZwsUoegWKNwhNmmpk_ojGTGzpqwxzMJKC81I6XnN5W8__usLV_saZwtLsZje6UZa2hh6nxCQxunol3OtwLHQ",
+          "expires_in": 120000,
+          "timestamp": "2026-03-12T16:03:19.728Z"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "versionId": "0c8e1ce9-f090-4059-b0ba-568ba79f5517",
+  "activeVersionId": "0c8e1ce9-f090-4059-b0ba-568ba79f5517",
+  "versionCounter": 73,
+  "triggerCount": 2,
+  "shared": [
+    {
+      "updatedAt": "2026-03-12T14:27:24.657Z",
+      "createdAt": "2026-03-12T14:27:24.657Z",
+      "role": "workflow:owner",
+      "workflowId": "WEBluR9Vf0BtaK5j",
+      "projectId": "Rt524Lw0hBZVQur4",
+      "project": {
+        "updatedAt": "2025-12-12T23:23:30.051Z",
+        "createdAt": "2025-12-12T23:20:42.705Z",
+        "id": "Rt524Lw0hBZVQur4",
+        "name": "Christian Eduardo  Scolari <cosechasistema@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "de9c40d4-49f5-486a-a1d0-99bc4511ad71"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-13T21:04:57.898Z",
+    "createdAt": "2026-03-13T21:04:57.898Z",
+    "versionId": "0c8e1ce9-f090-4059-b0ba-568ba79f5517",
+    "workflowId": "WEBluR9Vf0BtaK5j",
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "trigger-manual",
+        "name": "Ejecutar Manual",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          -800,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 13 * * *"
+              }
+            ]
+          }
+        },
+        "id": "schedule-trigger",
+        "name": "Cron Diario 10AM ARG",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -800,
+          112
+        ]
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "bind-sync-transferencias",
+          "options": {}
+        },
+        "id": "webhook-trigger",
+        "name": "Webhook Sync Manual",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -800,
+          512
+        ],
+        "webhookId": "19b32ac6-7cc2-4d42-968a-7fd8f31e5e4f"
+      },
+      {
+        "parameters": {
+          "command": "cd /root && curl -X POST --url https://api.bind.com.ar/v1/login/jwt -H 'Content-Type: application/json' -d '{\"username\": \"api-mutual-prd\",\"password\": \"z5c$xB4MDAU36y32fza2qXdS4\"}' --cert ./30707818421_prd-202512.crt:univaca --key ./30707818421.key --silent --show-error"
+        },
+        "id": "ssh-login",
+        "name": "Login JWT BIND",
+        "type": "n8n-nodes-base.ssh",
+        "typeVersion": 1,
+        "position": [
+          -560,
+          304
+        ],
+        "credentials": {
+          "sshPassword": {
+            "id": "p1bRsCCY8kDNmwBB",
+            "name": "SSH BIND produccion"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const raw = $input.first().json;\nconst stdout = raw.stdout || '';\nconst stderr = raw.stderr || '';\nconst exitCode = raw.code;\n\nif (exitCode !== 0 || stderr) {\n  throw new Error(`Login failed: exit=${exitCode}, stderr=${stderr}`);\n}\n\ntry {\n  const response = JSON.parse(stdout);\n  if (!response.token) {\n    throw new Error(`No token in response: ${stdout}`);\n  }\n  return [{\n    json: {\n      token: response.token,\n      expires_in: response.expires_in || 3600,\n      timestamp: new Date().toISOString()\n    }\n  }];\n} catch (e) {\n  throw new Error(`Parse error: ${e.message}. Raw: ${stdout.substring(0, 200)}`);\n}"
+        },
+        "id": "parse-token",
+        "name": "Parse Token",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -320,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "command": "=cd /root && curl --location 'https://api.bind.com.ar/v1/banks/322/accounts/20-1-777228-1-5/owner/transactions' -H \"Authorization: JWT {{$json.token}}\" -H \"obp_from_date: {{new Date(Date.now() - 2*24*60*60*1000).toISOString().split('T')[0]}}\" -H \"obp_to_date: {{new Date().toISOString().split('T')[0]}}\" -H \"obp_limit: 100\" -H \"obp_categories: TRANSFERENCIAS_RECIBIDAS\" -H \"obp_sort_direction: DESC\" --cert './30707818421_prd-202512.crt:univaca' --key './30707818421.key' --silent --show-error"
+        },
+        "id": "ssh-transactions",
+        "name": "Obtener Transacciones",
+        "type": "n8n-nodes-base.ssh",
+        "typeVersion": 1,
+        "position": [
+          -80,
+          304
+        ],
+        "credentials": {
+          "sshPassword": {
+            "id": "p1bRsCCY8kDNmwBB",
+            "name": "SSH BIND produccion"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const raw = $input.first().json;\nconst stdout = raw.stdout || '';\nconst exitCode = raw.code;\n\nif (exitCode !== 0) {\n  throw new Error(`Transactions request failed: exit=${exitCode}, stderr=${raw.stderr}`);\n}\n\nlet apiResponse;\ntry {\n  apiResponse = JSON.parse(stdout);\n} catch (e) {\n  throw new Error(`JSON parse error: ${e.message}. Raw: ${stdout.substring(0, 300)}`);\n}\n\nconst transactions = Array.isArray(apiResponse) ? apiResponse : (apiResponse.transactions || apiResponse.data || []);\nif (!Array.isArray(transactions)) {\n  throw new Error(`Expected array, got: ${typeof transactions}`);\n}\n\nreturn transactions.map(t => {\n  const cp = t.counterparty || {};\n  const details = t.details || {};\n  const thisAccount = t.this_account || {};\n  const cpRouting = cp.account_routing || {};\n  return {\n    json: {\n      bind_id: t.id,\n      tipo: details.type || 'TRANSFERENCIAS_RECIBIDAS',\n      estado: details.completed ? 'COMPLETED' : 'IN_PROGRESS',\n      monto: Math.abs(parseFloat(details.value?.amount || 0)),\n      moneda: details.value?.currency || 'ARS',\n      descripcion: details.description || null,\n      concepto: details.motive || null,\n      origen_nombre: cp.name || null,\n      origen_cbu: cpRouting.address || null,\n      origen_cuit: cp.id || null,\n      destino_cuenta: thisAccount.id || null,\n      fecha_inicio: details.posted || null,\n      fecha_fin: details.completed || null,\n      fecha_negocio: details.posted ? details.posted.split('T')[0] : null,\n      datos_raw: JSON.stringify(t)\n    }\n  };\n});"
+        },
+        "id": "transform",
+        "name": "Transform Records",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          160,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO bind_transferencias (bind_id, tipo, estado, monto, moneda, descripcion, concepto, origen_nombre, origen_cbu, origen_cuit, destino_cuenta, fecha_inicio, fecha_fin, fecha_negocio, datos_raw)\nVALUES (\n  '{{ $json.bind_id }}',\n  '{{ $json.tipo }}',\n  '{{ $json.estado }}',\n  {{ $json.monto }},\n  '{{ $json.moneda }}',\n  {{ $json.descripcion ? \"'\" + $json.descripcion.replace(/'/g, \"''\") + \"'\" : \"NULL\" }},\n  {{ $json.concepto ? \"'\" + $json.concepto.replace(/'/g, \"''\") + \"'\" : \"NULL\" }},\n  {{ $json.origen_nombre ? \"'\" + $json.origen_nombre.replace(/'/g, \"''\") + \"'\" : \"NULL\" }},\n  {{ $json.origen_cbu ? \"'\" + $json.origen_cbu + \"'\" : \"NULL\" }},\n  {{ $json.origen_cuit ? \"'\" + $json.origen_cuit + \"'\" : \"NULL\" }},\n  {{ $json.destino_cuenta ? \"'\" + $json.destino_cuenta + \"'\" : \"NULL\" }},\n  {{ $json.fecha_inicio ? \"'\" + $json.fecha_inicio + \"'\" : \"NULL\" }},\n  {{ $json.fecha_fin ? \"'\" + $json.fecha_fin + \"'\" : \"NULL\" }},\n  {{ $json.fecha_negocio ? \"'\" + $json.fecha_negocio + \"'\" : \"NULL\" }},\n  '{{ $json.datos_raw }}'::jsonb\n)\nON CONFLICT (bind_id) DO UPDATE SET\n  estado = EXCLUDED.estado,\n  monto = EXCLUDED.monto,\n  descripcion = EXCLUDED.descripcion,\n  concepto = EXCLUDED.concepto,\n  origen_nombre = EXCLUDED.origen_nombre,\n  origen_cbu = EXCLUDED.origen_cbu,\n  origen_cuit = EXCLUDED.origen_cuit,\n  fecha_fin = EXCLUDED.fecha_fin,\n  datos_raw = EXCLUDED.datos_raw,\n  updated_at = now()",
+          "options": {}
+        },
+        "id": "pg-upsert",
+        "name": "Upsert Postgres",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          400,
+          304
+        ],
+        "credentials": {
+          "postgres": {
+            "id": "13349aqWVZ2o9mbp",
+            "name": "Postgres BIND PRODUCCION"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nreturn [{\n  json: {\n    tipo_sync: 'TRANSFERENCIAS',\n    estado: 'OK',\n    registros: items.length,\n    nuevos: items.length,\n    actualizados: 0,\n    errores: 0,\n    detalle_error: null,\n    fecha_desde: new Date(Date.now() - 1*24*60*60*1000).toISOString(),\n    fecha_hasta: new Date().toISOString(),\n    duracion_ms: 0\n  }\n}];"
+        },
+        "id": "aggregate",
+        "name": "Aggregate Results",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          640,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO bind_sync_log (tipo_sync, estado, registros, nuevos, actualizados, errores, detalle_error, fecha_desde, fecha_hasta, duracion_ms)\nVALUES (\n  '{{ $json.tipo_sync }}',\n  '{{ $json.estado }}',\n  {{ $json.registros }},\n  {{ $json.nuevos }},\n  {{ $json.actualizados }},\n  {{ $json.errores }},\n  NULL,\n  '{{ $json.fecha_desde }}',\n  '{{ $json.fecha_hasta }}',\n  0\n)",
+          "options": {}
+        },
+        "id": "pg-log",
+        "name": "Write Sync Log",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          880,
+          304
+        ],
+        "credentials": {
+          "postgres": {
+            "id": "13349aqWVZ2o9mbp",
+            "name": "Postgres BIND PRODUCCION"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const data = $input.first().json;\nif (data.errores > 0 || data.estado === 'ERROR') {\n  return [{ json: data }];\n}\nreturn [];"
+        },
+        "id": "check-errors",
+        "name": "Check Errors",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1120,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "fromEmail": "cosechasistema@gmail.com",
+          "toEmail": "cosechasistema@gmail.com",
+          "subject": "=⚠️ Error Sync BIND Transferencias - {{ $json.estado }}",
+          "options": {}
+        },
+        "id": "send-alert",
+        "name": "Alerta Email",
+        "type": "n8n-nodes-base.emailSend",
+        "typeVersion": 2.1,
+        "position": [
+          1360,
+          304
+        ],
+        "webhookId": "8662bc39-4307-41f6-b13f-dba3da3afced",
+        "credentials": {
+          "smtp": {
+            "id": "IVBrJw1KD1pBcebL",
+            "name": "SMTP brevo"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "content": "## BIND Sync Transferencias → InsForge\n\n**Fuente**: API BIND (api.bind.com.ar) via SSH + mTLS + JWT\n**Destino**: PostgreSQL `bind_transferencias`\n**Cron**: 10:00 AM Argentina (13:00 UTC)\n**Webhook**: POST /webhook/bind-sync-transferencias\n\n### Flujo de autenticacion\n1. SSH al servidor 143.244.181.216 (certificados mTLS en /root/)\n2. curl POST /login/jwt con cert+key → obtiene JWT token\n3. curl GET transferencias con JWT + filtros de fecha\n\n### Credentials\n- Postgres BIND PRODUCCION (id: 13349aqWVZ2o9mbp)\n- SSH Password (servidor 143.244.181.216:22)\n- SMTP brevo (id: IVBrJw1KD1pBcebL)\n\n### Datos\n- Upsert por `bind_id` (UNIQUE)\n- Guarda JSON raw completo en `datos_raw`\n- Log en `bind_sync_log` con tipo TRANSFERENCIAS\n- Alerta email si hay errores",
+          "height": 420,
+          "width": 520
+        },
+        "id": "sticky-info-bind",
+        "name": "INFO - BIND Sync",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1104,
+          -208
+        ]
+      }
+    ],
+    "connections": {
+      "Ejecutar Manual": {
+        "main": [
+          [
+            {
+              "node": "Login JWT BIND",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Cron Diario 10AM ARG": {
+        "main": [
+          [
+            {
+              "node": "Login JWT BIND",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Webhook Sync Manual": {
+        "main": [
+          [
+            {
+              "node": "Login JWT BIND",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Login JWT BIND": {
+        "main": [
+          [
+            {
+              "node": "Parse Token",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Token": {
+        "main": [
+          [
+            {
+              "node": "Obtener Transacciones",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Obtener Transacciones": {
+        "main": [
+          [
+            {
+              "node": "Transform Records",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Transform Records": {
+        "main": [
+          [
+            {
+              "node": "Upsert Postgres",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Upsert Postgres": {
+        "main": [
+          [
+            {
+              "node": "Aggregate Results",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate Results": {
+        "main": [
+          [
+            {
+              "node": "Write Sync Log",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Write Sync Log": {
+        "main": [
+          [
+            {
+              "node": "Check Errors",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Errors": {
+        "main": [
+          [
+            {
+              "node": "Alerta Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Christian Eduardo  Scolari",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-13T21:04:58.097Z",
+        "id": 131,
+        "workflowId": "WEBluR9Vf0BtaK5j",
+        "versionId": "0c8e1ce9-f090-4059-b0ba-568ba79f5517",
+        "event": "deactivated",
+        "userId": "de9c40d4-49f5-486a-a1d0-99bc4511ad71"
+      },
+      {
+        "createdAt": "2026-03-13T21:04:58.181Z",
+        "id": 132,
+        "workflowId": "WEBluR9Vf0BtaK5j",
+        "versionId": "0c8e1ce9-f090-4059-b0ba-568ba79f5517",
+        "event": "activated",
+        "userId": "de9c40d4-49f5-486a-a1d0-99bc4511ad71"
+      }
+    ]
+  }
+}
