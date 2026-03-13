@@ -124,53 +124,63 @@ onMounted(cargar)
     </div>
 
     <!-- Stats cards -->
-    <div class="d-flex ga-4 mb-6 flex-wrap" data-testid="conciliacion-stats">
-      <v-card class="flex-grow-1 pa-4" min-width="160">
-        <div class="d-flex align-center ga-2 mb-1">
-          <v-icon icon="mdi-clock-outline" size="20" color="primary" />
-          <span class="text-caption text-medium-emphasis">Total pendientes</span>
-        </div>
-        <div class="text-h5 font-weight-bold text-primary">
-          {{ stats.totalPendientes }}
-        </div>
-      </v-card>
-      <v-card class="flex-grow-1 pa-4" min-width="160">
-        <div class="d-flex align-center ga-2 mb-1">
-          <v-icon icon="mdi-check-circle" size="20" color="success" />
-          <span class="text-caption text-medium-emphasis">Sugeridos</span>
-        </div>
-        <div class="text-h5 font-weight-bold text-success">
-          {{ stats.sugeridos }}
-        </div>
-      </v-card>
-      <v-card class="flex-grow-1 pa-4" min-width="160">
-        <div class="d-flex align-center ga-2 mb-1">
-          <v-icon icon="mdi-help-circle" size="20" color="warning" />
-          <span class="text-caption text-medium-emphasis">Posibles</span>
-        </div>
-        <div class="text-h5 font-weight-bold text-warning">
-          {{ stats.posibles }}
-        </div>
-      </v-card>
-      <v-card class="flex-grow-1 pa-4" min-width="160">
-        <div class="d-flex align-center ga-2 mb-1">
-          <v-icon icon="mdi-close-circle" size="20" color="grey" />
-          <span class="text-caption text-medium-emphasis">Sin match</span>
-        </div>
-        <div class="text-h5 font-weight-bold">
-          {{ stats.sinMatch }}
-        </div>
-      </v-card>
-      <v-card class="flex-grow-1 pa-4" min-width="160">
-        <div class="d-flex align-center ga-2 mb-1">
-          <v-icon icon="mdi-check-all" size="20" color="info" />
-          <span class="text-caption text-medium-emphasis">Verificados hoy</span>
-        </div>
-        <div class="text-h5 font-weight-bold text-info">
-          {{ stats.verificadosHoy }}
-        </div>
-      </v-card>
-    </div>
+    <v-row class="mb-6" data-testid="conciliacion-stats">
+      <v-col cols="12" sm="6" md="4" lg>
+        <v-card class="pa-4" variant="outlined">
+          <div class="d-flex align-center ga-2 mb-1">
+            <v-icon icon="mdi-clock-outline" size="20" color="primary" />
+            <span class="text-caption text-medium-emphasis">Total pendientes</span>
+          </div>
+          <div class="text-h5 font-weight-bold text-primary">
+            {{ stats.totalPendientes }}
+          </div>
+        </v-card>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" lg>
+        <v-card class="pa-4" variant="outlined">
+          <div class="d-flex align-center ga-2 mb-1">
+            <v-icon icon="mdi-check-circle" size="20" color="success" />
+            <span class="text-caption text-medium-emphasis">Sugeridos</span>
+          </div>
+          <div class="text-h5 font-weight-bold text-success">
+            {{ stats.sugeridos }}
+          </div>
+        </v-card>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" lg>
+        <v-card class="pa-4" variant="outlined">
+          <div class="d-flex align-center ga-2 mb-1">
+            <v-icon icon="mdi-help-circle" size="20" color="warning" />
+            <span class="text-caption text-medium-emphasis">Posibles</span>
+          </div>
+          <div class="text-h5 font-weight-bold text-warning">
+            {{ stats.posibles }}
+          </div>
+        </v-card>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" lg>
+        <v-card class="pa-4" variant="outlined">
+          <div class="d-flex align-center ga-2 mb-1">
+            <v-icon icon="mdi-close-circle" size="20" color="grey" />
+            <span class="text-caption text-medium-emphasis">Sin match</span>
+          </div>
+          <div class="text-h5 font-weight-bold">
+            {{ stats.sinMatch }}
+          </div>
+        </v-card>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" lg>
+        <v-card class="pa-4" variant="outlined">
+          <div class="d-flex align-center ga-2 mb-1">
+            <v-icon icon="mdi-check-all" size="20" color="info" />
+            <span class="text-caption text-medium-emphasis">Verificados hoy</span>
+          </div>
+          <div class="text-h5 font-weight-bold text-info">
+            {{ stats.verificadosHoy }}
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
 
     <!-- Filter chips -->
     <v-chip-group
