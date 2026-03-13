@@ -93,38 +93,75 @@ components/transferencias/        → TransferenciaList, TransferenciaDetalle, T
 
 ### 3. n8n (Orquestador)
 
-**Responsabilidad**: Obtener datos de BIND y guardarlos en InsForge.
+**Responsabilidad**: Obtener datos de BIND y MySQL, guardarlos en InsForge.
 
-**Workflow principal**: `BIND Sync Transferencias -> InsForge` (ID: `WEBluR9Vf0BtaK5j`, 12 nodos)
+**Instancia**: `https://n8nmutual.easypanel-cosecha.lat`
 
-```
-┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-│ Trigger  │──▶│ SSH Login│──▶│ SSH List │──▶│ Parse +  │──▶│ Upsert   │
-│ (Cron/   │   │ JWT      │   │ Transfer.│   │ Transform│   │ InsForge │
-│  Webhook)│   │          │   │          │   │          │   │          │
-└──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
-                                                                  │
-                                                                  ▼
-                                                            ┌──────────┐
-                                                            │ Log Sync │
-                                                            │ Result   │
-                                                            └──────────┘
-```
+#### Workflow 1: BIND Sync Transferencias → InsForge
 
-**Nodos del workflow**:
+| Propiedad | Valor |
+| --------- | ----- |
+| ID        | `WEBluR9Vf0BtaK5j` |
+| Nombre    | BIND Sync Transferencias -> InsForge |
+| Nodos     | 12 |
+| Activo    | Si |
+| Cron      | `0 13 * * *` (10:00 AM Argentina) |
+| Webhook   | `POST /webhook/bind-sync-transferencias` |
+| Fuente    | API BIND via SSH + mTLS + JWT |
+| Destino   | PostgreSQL `bind_transferencias` |
+| Alertas   | Email via SMTP brevo a cosechasistema@gmail.com |
 
-1. **Cron Diario 10AM ARG**: Schedule Trigger a las 13:00 UTC (10:00 Argentina)
-2. **Webhook Sync Manual**: `POST /webhook/bind-sync-transferencias` (responde 200 inmediato)
+**Credentials**:
+- `Postgres BIND PRODUCCION` (id: `13349aqWVZ2o9mbp`)
+- SSH Password (servidor 143.244.181.216)
+- SMTP brevo (id: `IVBrJw1KD1pBcebL`)
+
+**Nodos**:
+1. Cron Diario 10AM ARG → 2. Webhook Sync Manual → 3. Ejecutar Manual
+4. Login JWT BIND (SSH + curl mTLS) → 5. Parse Token → 6. Obtener Transacciones (SSH + curl JWT)
+7. Transform Records → 8. Upsert Postgres (ON CONFLICT bind_id) → 9. Aggregate Results
+10. Write Sync Log → 11. Check Errors → 12. Alerta Email
+
+#### Workflow 2: MySQL Sync Control Transferencias → InsForge
+
+| Propiedad | Valor |
+| --------- | ----- |
+| ID        | `tpcXvF0jU4JSyAYw` |
+| Nombre    | MySQL Sync Control Transferencias → InsForge |
+| Nodos     | 12 |
+| Activo    | Si |
+| Cron      | `0 13 * * *` (10:00 AM Argentina) |
+| Webhook   | `POST /webhook/mysql-sync-control-transferencia` |
+| Fuente    | MySQL `mutualonline.control_transferencia` (Digital Ocean) |
+| Destino   | PostgreSQL `control_transferencia_sync` |
+| Filtro    | `fecha_aviso_socio >= 2 meses atras` (VARCHAR, string-comparable) |
+| Batch     | 500 registros por ejecucion, incremental por `idcontrol_transferencia` |
+| Alertas   | Email via SMTP brevo a cosechasistema@gmail.com |
+
+**Credentials**:
+- `Postgres BIND PRODUCCION` (id: `13349aqWVZ2o9mbp`)
+- `Mysql BIND digital ocean` (id: `t8rQdD5dYQ0aTR2s`)
+- `SMTP brevo` (id: `IVBrJw1KD1pBcebL`)
+
+**Nodos**:
+1. **Cron Diario 10AM ARG**: Schedule `0 13 * * *`
+2. **Webhook Sync Manual**: `POST /webhook/mysql-sync-control-transferencia`
 3. **Ejecutar Manual**: Para testing en n8n UI
-4. **Login JWT BIND**: SSH + curl con mTLS para obtener token
-5. **Parse Token**: Extrae JWT del response
-6. **Obtener Transacciones**: SSH + curl con JWT, transferencias del ultimo dia
-7. **Transform Records**: Mapea `counterparty`, `details` al schema PostgreSQL
-8. **Upsert Postgres**: `INSERT ... ON CONFLICT (bind_id) DO UPDATE` directo
-9. **Aggregate Results**: Cuenta registros, nuevos, errores
-10. **Write Sync Log**: Registra en `bind_sync_log`
-11. **Check Errors**: Solo pasa datos si `errores > 0` o `estado = ERROR`
-12. **Alerta Email**: Envia a `cosechasistema@gmail.com` via SMTP brevo
+4. **Get Last Synced ID**: `SELECT MAX(idcontrol_transferencia) FROM control_transferencia_sync`
+5. **Fetch MySQL Records**: `SELECT * FROM control_transferencia WHERE id > last_id AND fecha_aviso_socio >= 2 meses LIMIT 500`
+6. **Transform + Parse Nombre**: Mapea `fecha_aviso_socio` → DATE, usa `socio_nombre` directo como `nombre_parseado`
+7. **Build Upsert SQL**: Genera INSERT ... ON CONFLICT (idcontrol_transferencia) DO UPDATE
+8. **Execute Upsert**: Ejecuta el SQL contra PostgreSQL
+9. **Aggregate Results**: Cuenta registros procesados
+10. **Write Sync Log**: Registra en `bind_sync_log` con tipo `CONTROL_TRANSFERENCIA`
+11. **Check Errors**: Solo pasa si hay errores
+12. **Alerta Email**: Envia alerta a cosechasistema@gmail.com
+
+**Gotchas MySQL**:
+- `fecha_aviso_socio` es VARCHAR(30) con formato `YYYY-MM-DD HH:MM` (NO es DATE)
+- `socio_nombre` existe como campo directo (no necesita parseo de concepto)
+- `verificado_date_sql` es VARCHAR(10) con formato `YYYY-MM-DD`
+- Base de datos MySQL: `mutualonline`
 
 ### 4. Servidor SSH (Puente mTLS)
 
