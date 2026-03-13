@@ -175,57 +175,92 @@ components/transferencias/        → TransferenciaList, TransferenciaDetalle, T
 - Detalle individual con origen, fechas, JSON raw
 - Reporte exportable PDF/Excel
 
-## Fase 5: Conciliacion (investigacion)
+## Fase 5: Conciliacion (IMPLEMENTADO)
 
 ### Objetivo
 
-Cruzar transferencias BIND (ya en PostgreSQL) con registros de control de transferencias de MySQL
-(`control_transferencia`) para semi-automatizar la verificacion que hoy se hace manualmente.
+Cruzar transferencias BIND (PostgreSQL) con registros MySQL `control_transferencia`
+para semi-automatizar la verificacion manual diaria.
 
-### Tabla MySQL: `control_transferencia`
+### Tabla PostgreSQL: `control_transferencia_sync`
 
-| Campo                     | Tipo     | Uso para matching                    |
-| ------------------------- | -------- | ------------------------------------ |
-| idcontrol_transferencia   | INT PK   | ID critico, preservar en PostgreSQL  |
-| monto                     | DECIMAL  | Señal principal (+50 puntos)         |
-| fecha                     | DATE     | Fecha de carga, ±1-2 dias vs BIND   |
-| banco_origen              | VARCHAR  | Cruzar con CBU primeros 3 digitos    |
-| concepto                  | TEXT     | Contiene nombre parseable del socio  |
-| socio_dni                 | VARCHAR  | No matchea directo con CUIT BIND     |
-| verificado                | ENUM     | Campo clave del negocio              |
-| asentado                  | ENUM     | Asiento contable generado            |
+| Campo                     | Tipo         | Origen MySQL                         |
+| ------------------------- | ------------ | ------------------------------------ |
+| idcontrol_transferencia   | INTEGER PK   | PK original de MySQL                 |
+| monto                     | DECIMAL      | monto                                |
+| fecha                     | DATE         | fecha_aviso_socio (VARCHAR→DATE)     |
+| socio_nombre              | TEXT         | socio_nombre (directo)               |
+| socio_nro                 | TEXT         | socio_nro                            |
+| socio_dni                 | VARCHAR      | socio_dni                            |
+| banco_origen              | VARCHAR      | banco_origen (nombre completo)       |
+| concepto                  | TEXT         | concepto                             |
+| nombre_parseado           | VARCHAR      | socio_nombre o parseo de concepto    |
+| nro_transferencia         | VARCHAR      | nro_transferencia                    |
+| verificado                | VARCHAR      | verificado (si/no)                   |
+| verificado_date_sql       | DATE         | verificado_date_sql                  |
+| asentado                  | VARCHAR      | asentado                             |
+| estado                    | VARCHAR      | estado                               |
+| bind_match_id             | UUID FK      | Referencia a bind_transferencias.id  |
+| match_score               | INTEGER      | Score del matching (0-110)           |
+| match_reason              | TEXT         | Razones del match                    |
+| synced_at                 | TIMESTAMPTZ  | Fecha de sincronizacion              |
+
+### n8n Workflow: MySQL Sync
+
+- **ID**: `tpcXvF0jU4JSyAYw` (12 nodos, ACTIVO)
+- **Cron**: Diario 10AM ARG (13:00 UTC)
+- **Webhook**: `POST /webhook/mysql-sync-control-transferencia`
+- **Filtro**: Ultimos 2 meses via `fecha_aviso_socio` (VARCHAR, string-comparable)
+- **Batch**: 500 registros por ejecucion, incremental por `idcontrol_transferencia`
 
 ### Estrategia de matching (scoring)
 
 ```
-+50  monto exacto (obligatorio)
++50  monto exacto (gate obligatorio — sin esto no hay candidatos)
 +35  fecha mismo dia / +25 ±1 dia / +15 ±2 dias
-+15  banco coincide (CBU→banco vs banco_origen)
-+10  nombre fuzzy >70% (origen_nombre vs parseado de concepto)
++15  banco coincide (CBU 3 digitos → banco vs banco_origen MySQL)
++10  nombre similar >70% (origen_nombre BIND vs socio_nombre MySQL)
 
->=75 → MATCH SUGERIDO (verde)
-50-74 → POSIBLE MATCH (amarillo)
+>=75 → MATCH SUGERIDO (verde, alta confianza)
+50-74 → POSIBLE MATCH (amarillo, revisar)
 <50  → SIN MATCH (gris)
 ```
 
-### Flujo propuesto
+### CBU/CVU → Banco
+
+Mapeo de 35+ bancos argentinos y 5 fintechs (Mercado Pago, Uala, Personal Pay, Naranja X, Prex).
+Archivo: `app/utils/cbu-bancos.ts`
+
+### Flujo implementado
 
 ```
-MySQL (control_transferencia) --n8n sync--> PostgreSQL (control_transferencia_sync)
-                                                    |
-                                              Matching engine
-                                                    |
-PostgreSQL (bind_transferencias) ----------------->  |
-                                                    v
-                                          Nuxt UI: Conciliacion
-                                          - Lista sin verificar
-                                          - Match sugerido + razon
-                                          - Boton "Verificar"
-                                          - (futuro) writeback MySQL
+MySQL (control_transferencia) --n8n workflow--> PostgreSQL (control_transferencia_sync)
+                                                        |
+                                                  calcularMatches()
+                                                        |
+PostgreSQL (bind_transferencias) --------------------->  |
+                                                        v
+                                              /conciliacion (Nuxt UI)
+                                              - 5 stats cards (pendientes, sugeridos, etc.)
+                                              - Filtros por categoria
+                                              - Tabla con score + razones
+                                              - Dialog detalle lado a lado
+                                              - Boton "Verificar Match"
 ```
 
-### Proyeccion de efectividad
+### Archivos del feature
 
-- Con monto + fecha + banco + nombre: ~85% match automatico
-- ~10% sugerencias, ~5% sin match
-- Impacto: de 40-60 revisiones manuales/dia a 2-5 casos anomalos
+```
+app/utils/cbu-bancos.ts              → Mapeo CBU/CVU → banco
+app/utils/matching.ts                → Motor de scoring (6 funciones)
+app/composables/useControlTransferencias.ts → CRUD control_transferencia_sync
+app/composables/useConciliacion.ts   → Orquestador de matching
+app/pages/conciliacion/index.vue     → UI completa (505 lineas)
+app/types/index.ts                   → ControlTransferencia, ConciliacionMatch, ConciliacionStats
+```
+
+### Estado actual
+
+- 1426 registros sincronizados (Ene 13 - Mar 13, 2026)
+- 27 registros sin verificar disponibles para conciliacion
+- Sync diario automatico + webhook manual operativo
