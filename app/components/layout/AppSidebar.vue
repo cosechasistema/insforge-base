@@ -9,6 +9,7 @@ const menuItems = computed(() => {
   const items = [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' },
     { title: 'Transferencias', icon: 'mdi-swap-horizontal', to: '/transferencias' },
+    { title: 'Conciliacion', icon: 'mdi-scale-balance', to: '/conciliacion' },
     { title: 'Sync Logs', icon: 'mdi-sync', to: '/sync-logs' },
     { title: 'Items', icon: 'mdi-format-list-bulleted', to: '/items' },
   ]

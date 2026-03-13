@@ -174,3 +174,58 @@ components/transferencias/        → TransferenciaList, TransferenciaDetalle, T
 - Tabla con busqueda por nombre, CUIT, descripcion
 - Detalle individual con origen, fechas, JSON raw
 - Reporte exportable PDF/Excel
+
+## Fase 5: Conciliacion (investigacion)
+
+### Objetivo
+
+Cruzar transferencias BIND (ya en PostgreSQL) con registros de control de transferencias de MySQL
+(`control_transferencia`) para semi-automatizar la verificacion que hoy se hace manualmente.
+
+### Tabla MySQL: `control_transferencia`
+
+| Campo                     | Tipo     | Uso para matching                    |
+| ------------------------- | -------- | ------------------------------------ |
+| idcontrol_transferencia   | INT PK   | ID critico, preservar en PostgreSQL  |
+| monto                     | DECIMAL  | Señal principal (+50 puntos)         |
+| fecha                     | DATE     | Fecha de carga, ±1-2 dias vs BIND   |
+| banco_origen              | VARCHAR  | Cruzar con CBU primeros 3 digitos    |
+| concepto                  | TEXT     | Contiene nombre parseable del socio  |
+| socio_dni                 | VARCHAR  | No matchea directo con CUIT BIND     |
+| verificado                | ENUM     | Campo clave del negocio              |
+| asentado                  | ENUM     | Asiento contable generado            |
+
+### Estrategia de matching (scoring)
+
+```
++50  monto exacto (obligatorio)
++35  fecha mismo dia / +25 ±1 dia / +15 ±2 dias
++15  banco coincide (CBU→banco vs banco_origen)
++10  nombre fuzzy >70% (origen_nombre vs parseado de concepto)
+
+>=75 → MATCH SUGERIDO (verde)
+50-74 → POSIBLE MATCH (amarillo)
+<50  → SIN MATCH (gris)
+```
+
+### Flujo propuesto
+
+```
+MySQL (control_transferencia) --n8n sync--> PostgreSQL (control_transferencia_sync)
+                                                    |
+                                              Matching engine
+                                                    |
+PostgreSQL (bind_transferencias) ----------------->  |
+                                                    v
+                                          Nuxt UI: Conciliacion
+                                          - Lista sin verificar
+                                          - Match sugerido + razon
+                                          - Boton "Verificar"
+                                          - (futuro) writeback MySQL
+```
+
+### Proyeccion de efectividad
+
+- Con monto + fecha + banco + nombre: ~85% match automatico
+- ~10% sugerencias, ~5% sin match
+- Impacto: de 40-60 revisiones manuales/dia a 2-5 casos anomalos

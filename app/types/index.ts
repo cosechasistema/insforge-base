@@ -63,3 +63,42 @@ export interface SyncLog {
   duracion_ms: number | null
   created_at: string
 }
+
+// Control de transferencias (MySQL sync)
+export interface ControlTransferencia {
+  idcontrol_transferencia: number
+  monto: number
+  fecha: string | null
+  socio_dni: string
+  socio_nombre: string | null
+  socio_nro: string | null
+  banco_origen: string
+  concepto: string
+  nombre_parseado: string | null
+  nro_transferencia: string
+  verificado: string
+  verificado_date_sql: string | null
+  asentado: string
+  estado: string
+  transferencia_enviada_a: string
+  bind_match_id: string | null
+  match_score: number | null
+  match_reason: string | null
+  synced_at: string
+}
+
+export interface ConciliacionMatch {
+  control: ControlTransferencia
+  bindMatch: Transferencia | null
+  score: number
+  reasons: string[]
+  category: 'sugerido' | 'posible' | 'sin_match'
+}
+
+export interface ConciliacionStats {
+  totalPendientes: number
+  sugeridos: number
+  posibles: number
+  sinMatch: number
+  verificadosHoy: number
+}
