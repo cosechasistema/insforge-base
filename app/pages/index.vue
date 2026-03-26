@@ -30,13 +30,13 @@ onMounted(fetchStats)
   <div data-testid="dashboard-page">
     <div class="d-flex align-center ga-3 mb-6">
       <v-icon :icon="APP_CONFIG.icon" size="40" color="primary" />
-      <h1 class="text-h4">
+      <h1 class="text-headline-large">
         Dashboard
       </h1>
     </div>
 
     <v-card class="pa-6 mb-6" data-testid="dashboard-welcome">
-      <v-card-title class="text-h5">
+      <v-card-title class="text-headline-medium">
         Welcome, {{ user?.profile.name ?? user?.email }}
       </v-card-title>
       <v-card-subtitle>
@@ -48,10 +48,10 @@ onMounted(fetchStats)
       <v-col cols="12" sm="6" md="3">
         <v-card class="pa-4 text-center" rounded="lg" data-testid="stat-users">
           <v-icon icon="mdi-account-group" size="36" color="primary" class="mb-2" />
-          <div class="text-h4 font-weight-bold">
+          <div class="text-headline-large font-weight-bold">
             {{ usersCount }}
           </div>
-          <div class="text-body-2 text-grey">
+          <div class="text-body-medium text-grey">
             Users
           </div>
         </v-card>
@@ -60,10 +60,10 @@ onMounted(fetchStats)
       <v-col cols="12" sm="6" md="3">
         <v-card class="pa-4 text-center" rounded="lg" data-testid="stat-records">
           <v-icon icon="mdi-database" size="36" color="info" class="mb-2" />
-          <div class="text-h4 font-weight-bold">
+          <div class="text-headline-large font-weight-bold">
             {{ itemsCount }}
           </div>
-          <div class="text-body-2 text-grey">
+          <div class="text-body-medium text-grey">
             Records
           </div>
         </v-card>
@@ -72,10 +72,10 @@ onMounted(fetchStats)
       <v-col cols="12" sm="6" md="3">
         <v-card class="pa-4 text-center" rounded="lg" data-testid="stat-api">
           <v-icon icon="mdi-cloud-check" size="36" color="success" class="mb-2" />
-          <div class="text-h4 font-weight-bold">
+          <div class="text-headline-large font-weight-bold">
             {{ apiStatus }}
           </div>
-          <div class="text-body-2 text-grey">
+          <div class="text-body-medium text-grey">
             API Status
           </div>
         </v-card>
@@ -84,10 +84,10 @@ onMounted(fetchStats)
       <v-col cols="12" sm="6" md="3">
         <v-card class="pa-4 text-center" rounded="lg" data-testid="stat-version">
           <v-icon icon="mdi-information" size="36" color="warning" class="mb-2" />
-          <div class="text-h4 font-weight-bold">
+          <div class="text-headline-large font-weight-bold">
             {{ APP_CONFIG.version }}
           </div>
-          <div class="text-body-2 text-grey">
+          <div class="text-body-medium text-grey">
             Version
           </div>
         </v-card>

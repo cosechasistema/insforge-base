@@ -78,7 +78,7 @@ onMounted(cargarDatos)
 
     <template v-else-if="isNew || item">
       <div class="d-flex align-center justify-space-between mb-4">
-        <h1 class="text-h4" data-testid="item-detail-title">
+        <h1 class="text-headline-large" data-testid="item-detail-title">
           {{ isNew ? 'Nuevo Item' : item!.nombre }}
         </h1>
         <v-btn

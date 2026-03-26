@@ -90,7 +90,7 @@ function handleGoHome() {
           <span style="color: #1565C0;">Volver al inicio</span>
         </v-btn>
 
-        <p class="mt-6 text-caption" style="opacity: 0.4; color: white;">
+        <p class="mt-6 text-body-small" style="opacity: 0.4; color: white;">
           {{ APP_CONFIG.name }} &middot; v{{ APP_CONFIG.version }}
         </p>
       </div>

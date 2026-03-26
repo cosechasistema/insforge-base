@@ -84,7 +84,7 @@ function verDetalle(id: string) {
     <div class="d-flex align-center justify-space-between mb-6 ga-4">
       <div class="d-flex align-center ga-3 flex-shrink-0">
         <v-icon icon="mdi-package-variant-closed" size="40" color="primary" />
-        <h1 class="text-h4">
+        <h1 class="text-headline-large">
           Items
         </h1>
       </div>

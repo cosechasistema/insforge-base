@@ -35,15 +35,15 @@ async function handleLogin() {
       class="auth-card pa-8"
       width="100%"
       max-width="420"
-      elevation="12"
+      elevation="5"
       data-testid="login-card"
     >
       <div class="text-center mb-6">
         <v-icon icon="mdi-shield-lock" size="48" color="primary" class="mb-3" />
-        <h1 class="text-h5 font-weight-bold">
+        <h1 class="text-headline-medium font-weight-bold">
           Iniciar Sesión
         </h1>
-        <p class="text-body-2 text-medium-emphasis mt-1">
+        <p class="text-body-medium text-medium-emphasis mt-1">
           Bienvenido de nuevo a InsForge
         </p>
       </div>
@@ -99,7 +99,7 @@ async function handleLogin() {
       </v-form>
 
       <div class="text-center">
-        <span class="text-body-2 text-medium-emphasis">¿No tenés cuenta?</span>
+        <span class="text-body-medium text-medium-emphasis">¿No tenés cuenta?</span>
         <NuxtLink to="/register" class="text-decoration-none text-secondary font-weight-medium ml-1">
           Registrate
         </NuxtLink>

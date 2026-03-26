@@ -50,9 +50,10 @@ IMPORTANT: When you detect any of these contexts, IMMEDIATELY read the correspon
 
 | Context                                          | Read this file                |
 | ------------------------------------------------ | ----------------------------- |
-| CHANGELOG updates, registrar cambios             | `skills/changelog/SKILL.md`   |
-| CRUD pages, listados, nuevo módulo, búsqueda     | `skills/crud-search/SKILL.md` |
-| Reportes, exportar PDF/Excel, reporte por filtro | `skills/crud-report/SKILL.md` |
+| CHANGELOG updates, registrar cambios             | `skills/changelog/SKILL.md`      |
+| CRUD pages, listados, nuevo módulo, búsqueda     | `skills/crud-search/SKILL.md`    |
+| Reportes, exportar PDF/Excel, reporte por filtro | `skills/crud-report/SKILL.md`    |
+| Inicializar proyecto, /init-project, nuevo proyecto | `skills/init-project/SKILL.md` |
 
 ### Framework/Library Detection
 

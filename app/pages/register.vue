@@ -56,14 +56,14 @@ async function handleRegister() {
       class="auth-card pa-8"
       width="100%"
       max-width="420"
-      elevation="12"
+      elevation="5"
     >
       <div class="text-center mb-6">
         <v-icon icon="mdi-account-plus" size="48" color="primary" class="mb-3" />
-        <h1 class="text-h5 font-weight-bold">
+        <h1 class="text-headline-medium font-weight-bold">
           Crear Cuenta
         </h1>
-        <p class="text-body-2 text-medium-emphasis mt-1">
+        <p class="text-body-medium text-medium-emphasis mt-1">
           Unite a InsForge hoy
         </p>
       </div>
@@ -130,7 +130,7 @@ async function handleRegister() {
       </v-form>
 
       <div class="text-center">
-        <span class="text-body-2 text-medium-emphasis">¿Ya tenés cuenta?</span>
+        <span class="text-body-medium text-medium-emphasis">¿Ya tenés cuenta?</span>
         <NuxtLink to="/login" class="text-decoration-none text-secondary font-weight-medium ml-1">
           Iniciá sesión
         </NuxtLink>

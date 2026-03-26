@@ -1,6 +1,6 @@
 {
   "name": "insforge-base",
-  "description": "Nuxt 4 + Vuetify 3 + InsForge base template",
+  "description": "Nuxt 4 + Vuetify 4 + InsForge base template",
   "version": "0.1.0",
   "type": "module",
   "private": true,

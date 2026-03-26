@@ -66,7 +66,7 @@ function exportarPDF() {
 
       <template v-else>
         <div class="d-flex align-center justify-space-between mb-3">
-          <span class="text-body-2 text-medium-emphasis">
+          <span class="text-body-medium text-medium-emphasis">
             {{ totalItems }} item(s) disponible(s)
           </span>
           <div class="d-flex ga-2">

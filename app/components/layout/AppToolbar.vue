@@ -23,7 +23,7 @@ const emit = defineEmits<{
 
     <v-spacer />
 
-    <span v-if="user" class="text-white text-body-2 mr-2 d-none d-sm-inline" data-testid="toolbar-username">
+    <span v-if="user" class="text-white text-body-medium mr-2 d-none d-sm-inline" data-testid="toolbar-username">
       {{ user.profile.name ?? user.email }}
     </span>
 

@@ -37,11 +37,11 @@ async function handleVerify() {
 </script>
 
 <template>
-  <v-container class="fill-height" fluid>
-    <v-row align="center" justify="center">
+  <v-container class="fill-height d-flex align-center justify-center" fluid>
+    <v-row class="align-center justify-center">
       <v-col cols="12" sm="8" md="4">
         <v-card class="pa-6" elevation="4">
-          <v-card-title class="text-h5 text-center mb-2">
+          <v-card-title class="text-headline-medium text-center mb-2">
             Verificar Email
           </v-card-title>
 

@@ -31,7 +31,7 @@ async function handleSubmit() {
 
 <template>
   <v-card class="pa-6" data-testid="item-form">
-    <v-card-title class="text-h5 mb-4">
+    <v-card-title class="text-headline-medium mb-4">
       {{ isEditing ? 'Editar Item' : 'Nuevo Item' }}
     </v-card-title>
 

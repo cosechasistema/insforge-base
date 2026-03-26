@@ -62,7 +62,7 @@ onMounted(fetchUsers)
     <div class="d-flex align-center justify-space-between mb-6">
       <div class="d-flex align-center ga-3">
         <v-icon icon="mdi-account-group" size="40" color="primary" />
-        <h1 class="text-h4">
+        <h1 class="text-headline-large">
           Usuarios
         </h1>
       </div>
@@ -84,7 +84,7 @@ onMounted(fetchUsers)
       data-testid="users-table"
     >
       <template #item.user_id="{ item }">
-        <code class="text-caption" :title="item.user_id">{{ item.user_id.slice(0, 8) }}...</code>
+        <code class="text-body-small" :title="item.user_id">{{ item.user_id.slice(0, 8) }}...</code>
       </template>
 
       <template #item.role="{ item }">

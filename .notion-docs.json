@@ -1,0 +1,15 @@
+{
+  "notionMainPage": "32f7eb3c-d8fa-81d1-9f02-c669c9275b22",
+  "notionUrl": "https://www.notion.so/32f7eb3cd8fa81d19f02c669c9275b22",
+  "title": "InsForge Base — Documentación",
+  "pages": {
+    "arquitectura-y-stack": "32f7eb3c-d8fa-8146-8e3b-c964af5d790f",
+    "frontend-paginas-componentes": "32f7eb3c-d8fa-818d-bb60-fec5341e472a",
+    "base-de-datos": "32f7eb3c-d8fa-8126-aba8-fb7afb4eb974",
+    "testing": "32f7eb3c-d8fa-81a6-9779-da01c8395625",
+    "credenciales-y-accesos": "32f7eb3c-d8fa-81e3-a11e-c8670352939a",
+    "onboarding": "32f7eb3c-d8fa-814e-a5cd-ea098bfd3c0c",
+    "riesgos-y-decisiones": "32f7eb3c-d8fa-813a-b006-f678950acacf"
+  },
+  "lastUpdated": "2026-03-26"
+}
